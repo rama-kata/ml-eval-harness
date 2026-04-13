@@ -635,8 +635,176 @@ function showDetails(runId) {{
 </html>"""
 
 
+# ── Static SVGs for README ───────────────────────────────────────────────────
+
+
+def _svg_heatmap(runs: list[dict], width: int = 820, height: int = 0) -> str:
+    """Static SVG heatmap: models (rows) x metrics (cols), color-coded cells."""
+    metrics = [("accuracy", "Exact Match"), ("contains_rate", "Contains"),
+               ("avg_token_f1", "Token F1")]
+    has_judge = any(r.get("judge_correct_rate") is not None for r in runs)
+    if has_judge:
+        metrics.append(("judge_correct_rate", "Judge"))
+
+    n_models = len(runs)
+    n_metrics = len(metrics)
+    label_w = 180
+    cell_w = (width - label_w - 20) // n_metrics
+    cell_h = 38
+    header_h = 50
+    title_h = 40
+    padding = 20
+    if height == 0:
+        height = title_h + header_h + n_models * cell_h + padding
+
+    def lerp_color(t: float) -> str:
+        """Interpolate from dim red through yellow to green."""
+        t = max(0.0, min(1.0, t))
+        if t < 0.5:
+            r = int(248 - (248 - 210) * (t / 0.5))
+            g = int(81 + (153 - 81) * (t / 0.5))
+            b = int(73 - (73 - 34) * (t / 0.5))
+        else:
+            s = (t - 0.5) / 0.5
+            r = int(210 - (210 - 63) * s)
+            g = int(153 + (185 - 153) * s)
+            b = int(34 + (80 - 34) * s)
+        return f"rgb({r},{g},{b})"
+
+    parts = [
+        f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" '
+        f'viewBox="0 0 {width} {height}">',
+        f'<rect width="{width}" height="{height}" rx="8" fill="{BG}"/>',
+        f'<text x="{width / 2}" y="28" text-anchor="middle" fill="{TEXT}" '
+        f'font-size="15" font-weight="600" font-family="sans-serif">Metric Heatmap</text>',
+    ]
+
+    # Column headers
+    for mi, (_, label) in enumerate(metrics):
+        cx = label_w + mi * cell_w + cell_w / 2
+        parts.append(
+            f'<text x="{cx}" y="{title_h + 18}" text-anchor="middle" fill="{TEXT_DIM}" '
+            f'font-size="12" font-family="sans-serif" font-weight="600">{label}</text>'
+        )
+
+    # Rows
+    for ri, run in enumerate(runs):
+        y = title_h + header_h + ri * cell_h
+        # Model label
+        parts.append(
+            f'<text x="{label_w - 10}" y="{y + cell_h / 2 + 5}" text-anchor="end" fill="{TEXT}" '
+            f'font-size="12" font-family="sans-serif">{run["model"]}</text>'
+        )
+        for mi, (key, _) in enumerate(metrics):
+            val = run.get(key) or 0
+            cx = label_w + mi * cell_w
+            color = lerp_color(val)
+            parts.append(
+                f'<rect x="{cx + 2}" y="{y + 2}" width="{cell_w - 4}" height="{cell_h - 4}" '
+                f'rx="4" fill="{color}" opacity="0.85"/>'
+            )
+            text_color = TEXT if val < 0.65 else BG
+            parts.append(
+                f'<text x="{cx + cell_w / 2}" y="{y + cell_h / 2 + 5}" text-anchor="middle" '
+                f'fill="{text_color}" font-size="12" font-weight="600" '
+                f'font-family="sans-serif">{val:.1%}</text>'
+            )
+
+    parts.append("</svg>")
+    return "\n".join(parts)
+
+
+def _svg_latency(runs: list[dict], width: int = 820, height: int = 320) -> str:
+    """Static SVG bar chart for latency comparison with p95 markers."""
+    margin = {"top": 55, "right": 30, "bottom": 70, "left": 80}
+    chart_w = width - margin["left"] - margin["right"]
+    chart_h = height - margin["top"] - margin["bottom"]
+
+    # Scale to max of p95 so everything fits
+    max_val = max(
+        max((r.get("p95_latency_ms") or r.get("avg_latency_ms") or 0) for r in runs),
+        1,
+    ) * 1.15
+    bar_w = min(chart_w / (len(runs) * 1.8), 70)
+    total_bars_w = bar_w * len(runs)
+    gap = (chart_w - total_bars_w) / (len(runs) + 1)
+
+    parts = [
+        f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" '
+        f'viewBox="0 0 {width} {height}">',
+        f'<rect width="{width}" height="{height}" rx="8" fill="{BG}"/>',
+        f'<text x="{width / 2}" y="30" text-anchor="middle" fill="{TEXT}" '
+        f'font-size="15" font-weight="600" font-family="sans-serif">'
+        f'Latency Comparison (avg + p95)</text>',
+    ]
+
+    # Y gridlines
+    for i in range(5):
+        val = max_val * i / 4
+        y = margin["top"] + chart_h - (val / max_val * chart_h)
+        parts.append(
+            f'<line x1="{margin["left"]}" y1="{y}" x2="{width - margin["right"]}" '
+            f'y2="{y}" stroke="{BORDER}" stroke-width="1"/>'
+        )
+        parts.append(
+            f'<text x="{margin["left"] - 8}" y="{y + 4}" text-anchor="end" '
+            f'fill="{TEXT_DIM}" font-size="11" font-family="sans-serif">{val:.0f}ms</text>'
+        )
+
+    # Bars
+    for i, run in enumerate(runs):
+        color = ACCENT_COLORS[i % len(ACCENT_COLORS)]
+        avg = run.get("avg_latency_ms") or 0
+        p95 = run.get("p95_latency_ms") or avg
+        x = margin["left"] + gap + i * (bar_w + gap)
+        cx = x + bar_w / 2
+
+        # Avg bar
+        bar_h = (avg / max_val) * chart_h
+        y = margin["top"] + chart_h - bar_h
+        parts.append(
+            f'<rect x="{x}" y="{y}" width="{bar_w}" height="{bar_h}" '
+            f'rx="3" fill="{color}" opacity="0.85"/>'
+        )
+
+        # P95 whisker
+        p95_h = (p95 / max_val) * chart_h
+        p95_y = margin["top"] + chart_h - p95_h
+        parts.append(
+            f'<line x1="{cx}" y1="{p95_y}" x2="{cx}" y2="{y}" '
+            f'stroke="{color}" stroke-width="2" opacity="0.5"/>'
+        )
+        parts.append(
+            f'<line x1="{cx - 8}" y1="{p95_y}" x2="{cx + 8}" y2="{p95_y}" '
+            f'stroke="{color}" stroke-width="2" opacity="0.5"/>'
+        )
+
+        # Value label
+        parts.append(
+            f'<text x="{cx}" y="{y - 6}" text-anchor="middle" fill="{TEXT}" '
+            f'font-size="11" font-weight="600" font-family="sans-serif">{avg:.0f}ms</text>'
+        )
+
+        # Model name (rotated if many)
+        label_y = margin["top"] + chart_h + 16
+        if len(runs) > 5:
+            parts.append(
+                f'<text x="{cx}" y="{label_y}" text-anchor="end" fill="{TEXT_DIM}" '
+                f'font-size="11" font-family="sans-serif" '
+                f'transform="rotate(-30 {cx} {label_y})">{run["model"]}</text>'
+            )
+        else:
+            parts.append(
+                f'<text x="{cx}" y="{label_y}" text-anchor="middle" fill="{TEXT_DIM}" '
+                f'font-size="11" font-family="sans-serif">{run["model"]}</text>'
+            )
+
+    parts.append("</svg>")
+    return "\n".join(parts)
+
+
 def generate(db_path: str = "results.db", output_dir: str = "docs"):
-    """Generate the ECharts HTML dashboard."""
+    """Generate the ECharts HTML dashboard and static SVGs for README."""
     out = Path(output_dir)
     out.mkdir(parents=True, exist_ok=True)
 
@@ -647,9 +815,19 @@ def generate(db_path: str = "results.db", output_dir: str = "docs"):
 
     print(f"Generating dashboard for {len(runs)} run(s)...")
 
+    # Interactive HTML dashboard
     html = _build_html(runs)
     (out / "index.html").write_text(html)
     print(f"  \u2192 {out / 'index.html'}")
+
+    # Static SVGs for README
+    heatmap = _svg_heatmap(runs)
+    (out / "heatmap.svg").write_text(heatmap)
+    print(f"  \u2192 {out / 'heatmap.svg'}")
+
+    latency = _svg_latency(runs)
+    (out / "latency.svg").write_text(latency)
+    print(f"  \u2192 {out / 'latency.svg'}")
 
     # Keep .nojekyll for GitHub Pages
     (out / ".nojekyll").touch()
