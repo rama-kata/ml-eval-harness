@@ -168,7 +168,7 @@ def _build_html(runs: list[dict]) -> str:
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ml-eval-harness \u2014 Results Dashboard</title>
-<script src="{ECHARTS_CDN}"><\/script>
+<script src="{ECHARTS_CDN}"></script>
 <style>
   :root {{
     --bg: {BG}; --card: {BG_CARD}; --border: {BORDER};

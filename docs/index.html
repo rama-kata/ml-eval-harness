@@ -4,11 +4,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ml-eval-harness — Results Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
 <style>
   :root {
     --bg: #0d1117; --card: #161b22; --border: #30363d;
     --text: #e6edf3; --dim: #8b949e;
-    --blue: #58a6ff; --green: #3fb950; --yellow: #e3b341;
+    --blue: #58a6ff; --green: #3fb950; --yellow: #d29922;
     --red: #f85149; --purple: #bc8cff;
   }
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -16,56 +17,39 @@
     background: var(--bg); color: var(--text);
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
     font-size: 14px; line-height: 1.5;
-    padding: 2rem; max-width: 1200px; margin: 0 auto;
+    padding: 2rem; max-width: 1400px; margin: 0 auto;
   }
   h1 { font-size: 1.8rem; font-weight: 600; margin-bottom: 0.5rem; }
   h1 span { color: var(--blue); }
   .subtitle { color: var(--dim); margin-bottom: 1.5rem; }
 
-  /* ── Summary Cards ── */
+  /* Summary cards */
   .summary-cards {
     display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; margin-bottom: 2rem;
   }
-  .stat-card {
-    background: var(--card); border: 1px solid var(--border); border-radius: 10px;
-    padding: 1.2rem; text-align: center;
+  .card {
+    background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+    padding: 1.25rem; text-align: center;
   }
-  .stat-card .stat-value {
-    font-size: 1.6rem; font-weight: 700; margin-bottom: 0.25rem;
-  }
-  .stat-card .stat-label { color: var(--dim); font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; }
-  .stat-card .stat-detail { color: var(--dim); font-size: 12px; margin-top: 0.3rem; }
-  .stat-card:nth-child(1) .stat-value { color: var(--blue); }
-  .stat-card:nth-child(2) .stat-value { color: var(--green); }
-  .stat-card:nth-child(3) .stat-value { color: var(--purple); }
-  .stat-card:nth-child(4) .stat-value { color: var(--yellow); }
+  .card-label { color: var(--dim); font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.25rem; }
+  .card-value { font-size: 1.8rem; font-weight: 700; color: var(--blue); }
+  .card-sub { color: var(--dim); font-size: 12px; margin-top: 0.25rem; }
 
-  /* ── Charts ── */
+  /* Chart grid */
   .charts { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 2rem; }
   .chart-card {
     background: var(--card); border: 1px solid var(--border); border-radius: 12px;
-    padding: 1.5rem; overflow: hidden;
+    padding: 1rem; overflow: hidden;
   }
   .chart-card.full { grid-column: 1 / -1; }
-  .chart-card svg { width: 100%; height: auto; }
+  .chart-container { width: 100%; height: 400px; }
+  .chart-container.tall { height: 480px; }
 
-  /* ── Radar filter ── */
-  .radar-controls { margin-bottom: 0.75rem; display: flex; flex-wrap: wrap; gap: 0.5rem; }
-  .model-check {
-    display: inline-flex; align-items: center; gap: 6px;
-    font-size: 12px; cursor: pointer; padding: 3px 8px;
-    border-radius: 6px; border: 1px solid var(--border);
-    transition: background 0.15s;
+  /* Table */
+  .section-title {
+    font-size: 1.1rem; font-weight: 600; margin: 2rem 0 1rem;
+    padding-bottom: 0.5rem; border-bottom: 1px solid var(--border);
   }
-  .model-check:hover { background: rgba(255,255,255,0.04); }
-  .model-check input { display: none; }
-  .check-dot {
-    width: 8px; height: 8px; border-radius: 50%; opacity: 0.35;
-    transition: opacity 0.15s;
-  }
-  .model-check input:checked ~ .check-dot { opacity: 1; }
-
-  /* ── Table ── */
   table {
     width: 100%; border-collapse: collapse; background: var(--card);
     border: 1px solid var(--border); border-radius: 12px; overflow: hidden;
@@ -73,24 +57,19 @@
   th {
     text-align: left; padding: 12px 16px; font-weight: 600; font-size: 12px;
     text-transform: uppercase; letter-spacing: 0.05em; color: var(--dim);
-    border-bottom: 1px solid var(--border); background: var(--card);
-    cursor: pointer; user-select: none; white-space: nowrap;
-    transition: color 0.15s;
+    border-bottom: 1px solid var(--border); background: var(--card); cursor: pointer;
+    user-select: none;
   }
   th:hover { color: var(--text); }
-  th .sort-arrow { font-size: 10px; margin-left: 4px; opacity: 0.4; }
-  th.sorted .sort-arrow { opacity: 1; color: var(--blue); }
+  th .sort-arrow { margin-left: 4px; font-size: 10px; }
   td { padding: 10px 16px; border-bottom: 1px solid var(--border); }
-  tbody tr { cursor: pointer; transition: background 0.15s; }
-  tbody tr:hover { background: rgba(88,166,255,0.06); }
-  tbody tr.active { background: rgba(88,166,255,0.1); }
+  tr { cursor: pointer; transition: background 0.15s; }
+  tr:hover { background: rgba(88,166,255,0.06); }
+  tr.active { background: rgba(88,166,255,0.1); }
   .model-name { font-weight: 600; color: var(--blue); }
   .dim { color: var(--dim); }
 
-  .section-title {
-    font-size: 1.1rem; font-weight: 600; margin: 2rem 0 1rem;
-    padding-bottom: 0.5rem; border-bottom: 1px solid var(--border);
-  }
+  /* Details panel */
   #details-panel {
     background: var(--card); border: 1px solid var(--border); border-radius: 12px;
     padding: 1.5rem; margin-top: 1rem; display: none;
@@ -101,20 +80,21 @@
     border: 1px solid var(--border); background: var(--bg);
   }
   .detail-item .prompt { color: var(--blue); font-weight: 500; margin-bottom: 0.5rem; }
-  .detail-item .response { margin: 0.5rem 0; padding: 0.5rem; background: var(--card); border-radius: 4px; }
+  .detail-item .response {
+    margin: 0.5rem 0; padding: 0.5rem; background: var(--card); border-radius: 4px;
+    word-break: break-word;
+  }
   .badge {
     display: inline-block; padding: 2px 8px; border-radius: 12px;
     font-size: 11px; font-weight: 600; margin-right: 4px;
   }
   .badge.correct { background: rgba(63,185,80,0.15); color: var(--green); }
-  .badge.partial { background: rgba(227,179,65,0.15); color: var(--yellow); }
+  .badge.partial { background: rgba(210,153,34,0.15); color: var(--yellow); }
   .badge.wrong { background: rgba(248,81,73,0.15); color: var(--red); }
   .badge.metric { background: rgba(88,166,255,0.1); color: var(--blue); }
-  .f1-bar {
-    height: 4px; border-radius: 2px; background: var(--border);
-    margin-top: 4px; overflow: hidden;
-  }
+  .f1-bar { height: 4px; border-radius: 2px; background: var(--border); margin-top: 4px; overflow: hidden; }
   .f1-bar-fill { height: 100%; border-radius: 2px; background: var(--green); transition: width 0.3s; }
+
   @media (max-width: 768px) {
     .charts { grid-template-columns: 1fr; }
     .summary-cards { grid-template-columns: repeat(2, 1fr); }
@@ -126,257 +106,455 @@
 <h1><span>ml-eval-harness</span> — Results</h1>
 <p class="subtitle">Comparing local LLMs via Ollama · 8 run(s) recorded</p>
 
-<!-- Summary Cards -->
 <div class="summary-cards">
-  <div class="stat-card">
-    <div class="stat-value">8</div>
-    <div class="stat-label">Total Runs</div>
-    <div class="stat-detail">8 unique models</div>
-  </div>
-  <div class="stat-card">
-    <div class="stat-value">100%</div>
-    <div class="stat-label">Best Accuracy</div>
-    <div class="stat-detail">gemma2:2b-instruct-q5_K_M</div>
-  </div>
-  <div class="stat-card">
-    <div class="stat-value">1.00</div>
-    <div class="stat-label">Best Token F1</div>
-    <div class="stat-detail">gemma2:2b-instruct-q5_K_M</div>
-  </div>
-  <div class="stat-card">
-    <div class="stat-value">110ms</div>
-    <div class="stat-label">Fastest</div>
-    <div class="stat-detail">qwen2.5:7b</div>
-  </div>
+<div class="card">
+    <div class="card-label">Total Runs</div>
+    <div class="card-value">8</div>
+    <div class="card-sub">8 models</div>
 </div>
+<div class="card">
+    <div class="card-label">Best Exact Match</div>
+    <div class="card-value">100.0%</div>
+    <div class="card-sub">gemma2:2b-instruct-q5_K_M</div>
+</div>
+<div class="card">
+    <div class="card-label">Best Token F1</div>
+    <div class="card-value">1.000</div>
+    <div class="card-sub">gemma2:2b-instruct-q5_K_M</div>
+</div>
+<div class="card">
+    <div class="card-label">Fastest</div>
+    <div class="card-value">110ms</div>
+    <div class="card-sub">qwen2.5:7b</div>
+</div>
+</div>
+
 
 <div class="charts">
   <div class="chart-card">
-    <div class="radar-controls"><label class="model-check" style="--accent:#58a6ff"><input type="checkbox" value="1" checked onchange="updateRadar()"><span class="check-dot" style="background:#58a6ff"></span>qwen2.5:3b</label><label class="model-check" style="--accent:#3fb950"><input type="checkbox" value="2" checked onchange="updateRadar()"><span class="check-dot" style="background:#3fb950"></span>qwen2.5:0.5b</label><label class="model-check" style="--accent:#e3b341"><input type="checkbox" value="3" checked onchange="updateRadar()"><span class="check-dot" style="background:#e3b341"></span>gemma2:2b-instruct-q5_K_M</label><label class="model-check" style="--accent:#f85149"><input type="checkbox" value="4" checked onchange="updateRadar()"><span class="check-dot" style="background:#f85149"></span>phi4-mini:latest</label><label class="model-check" style="--accent:#bc8cff"><input type="checkbox" value="5"  onchange="updateRadar()"><span class="check-dot" style="background:#bc8cff"></span>ministral-3:3b</label><label class="model-check" style="--accent:#39d2c0"><input type="checkbox" value="6"  onchange="updateRadar()"><span class="check-dot" style="background:#39d2c0"></span>cogito:latest</label><label class="model-check" style="--accent:#f778ba"><input type="checkbox" value="7"  onchange="updateRadar()"><span class="check-dot" style="background:#f778ba"></span>qwen2.5:7b</label><label class="model-check" style="--accent:#79c0ff"><input type="checkbox" value="8"  onchange="updateRadar()"><span class="check-dot" style="background:#79c0ff"></span>qwen3:0.6b</label></div>
-    <div id="radar-container"><svg xmlns="http://www.w3.org/2000/svg" width="500" height="542" viewBox="0 0 500 542"><rect width="500" height="542" rx="8" fill="#0d1117"/><text x="250.0" y="28" text-anchor="middle" fill="#e6edf3" font-size="16" font-weight="600">Model Profile</text><polygon points="250.0,215.0 292.7975432332819,246.09423525312738 276.4503363531613,296.40576474687265 223.54966364683872,296.40576474687265 207.2024567667181,246.09423525312738" fill="none" stroke="#30363d" stroke-width="1"/><text x="254.0" y="211.0" fill="#8b949e" font-size="9">25%</text><polygon points="250.0,170.0 335.5950864665638,232.18847050625473 302.90067270632255,332.8115294937453 197.09932729367742,332.8115294937453 164.40491353343617,232.18847050625476" fill="none" stroke="#30363d" stroke-width="1"/><text x="254.0" y="166.0" fill="#8b949e" font-size="9">50%</text><polygon points="250.0,125.0 378.3926296998457,218.2827057593821 329.3510090594839,369.2172942406179 170.64899094051614,369.2172942406179 121.60737030015426,218.2827057593821" fill="none" stroke="#30363d" stroke-width="1"/><text x="254.0" y="121.0" fill="#8b949e" font-size="9">75%</text><polygon points="250.0,80.0 421.19017293312766,204.37694101250946 355.80134541264516,405.62305898749054 144.19865458735484,405.62305898749054 78.80982706687234,204.3769410125095" fill="none" stroke="#30363d" stroke-width="1"/><text x="254.0" y="76.0" fill="#8b949e" font-size="9">100%</text><line x1="250.0" y1="260.0" x2="250.0" y2="80.0" stroke="#30363d" stroke-width="1"/><text x="250.0" y="54.0" text-anchor="middle" fill="#e6edf3" font-size="12" font-weight="500">Exact Match</text><line x1="250.0" y1="260.0" x2="421.19017293312766" y2="204.37694101250946" stroke="#30363d" stroke-width="1"/><text x="449.7218684219822" y="199.10643118126103" text-anchor="start" fill="#e6edf3" font-size="12" font-weight="500">Contains</text><line x1="250.0" y1="260.0" x2="355.80134541264516" y2="405.62305898749054" stroke="#30363d" stroke-width="1"/><text x="373.4349029814193" y="433.89356881873897" text-anchor="start" fill="#e6edf3" font-size="12" font-weight="500">Token F1</text><line x1="250.0" y1="260.0" x2="144.19865458735484" y2="405.62305898749054" stroke="#30363d" stroke-width="1"/><text x="126.56509701858066" y="433.89356881873897" text-anchor="end" fill="#e6edf3" font-size="12" font-weight="500">Judge</text><line x1="250.0" y1="260.0" x2="78.80982706687234" y2="204.3769410125095" stroke="#30363d" stroke-width="1"/><text x="50.278131578017735" y="199.1064311812611" text-anchor="end" fill="#e6edf3" font-size="12" font-weight="500">Speed</text><g style="cursor:pointer"><title>qwen2.5:3b: exact=80% f1=0.91 lat=317ms</title><polygon points="250.0,116.0 386.9521383465021,215.50155281000758 346.7326586629898,393.14108250284846 144.19865458735484,405.62305898749054 101.45367993170322,211.73437480689296" fill="#58a6ff" fill-opacity="0.12" stroke="#58a6ff" stroke-width="2"/></g><circle cx="250.0" cy="116.0" r="3.5" fill="#58a6ff" stroke="#0d1117" stroke-width="1"/><circle cx="386.9521383465021" cy="215.50155281000758" r="3.5" fill="#58a6ff" stroke="#0d1117" stroke-width="1"/><circle cx="346.7326586629898" cy="393.14108250284846" r="3.5" fill="#58a6ff" stroke="#0d1117" stroke-width="1"/><circle cx="144.19865458735484" cy="405.62305898749054" r="3.5" fill="#58a6ff" stroke="#0d1117" stroke-width="1"/><circle cx="101.45367993170322" cy="211.73437480689296" r="3.5" fill="#58a6ff" stroke="#0d1117" stroke-width="1"/><g style="cursor:pointer"><title>qwen2.5:0.5b: exact=0% f1=0.48 lat=293ms</title><polygon points="250.0,260.0 421.19017293312766,204.37694101250946 301.13731694944516,330.3844785106204 144.19865458735484,405.62305898749054 99.69599432153888,211.1632681323654" fill="#3fb950" fill-opacity="0.12" stroke="#3fb950" stroke-width="2"/></g><circle cx="250.0" cy="260.0" r="3.5" fill="#3fb950" stroke="#0d1117" stroke-width="1"/><circle cx="421.19017293312766" cy="204.37694101250946" r="3.5" fill="#3fb950" stroke="#0d1117" stroke-width="1"/><circle cx="301.13731694944516" cy="330.3844785106204" r="3.5" fill="#3fb950" stroke="#0d1117" stroke-width="1"/><circle cx="144.19865458735484" cy="405.62305898749054" r="3.5" fill="#3fb950" stroke="#0d1117" stroke-width="1"/><circle cx="99.69599432153888" cy="211.1632681323654" r="3.5" fill="#3fb950" stroke="#0d1117" stroke-width="1"/><g style="cursor:pointer"><title>gemma2:2b-instruct-q5_K_M: exact=100% f1=1.00 lat=1416ms</title><polygon points="250.0,80.0 421.19017293312766,204.37694101250946 355.80134541264516,405.62305898749054 144.19865458735484,405.62305898749054 179.91538915122817,237.2281295324156" fill="#e3b341" fill-opacity="0.12" stroke="#e3b341" stroke-width="2"/></g><circle cx="250.0" cy="80.0" r="3.5" fill="#e3b341" stroke="#0d1117" stroke-width="1"/><circle cx="421.19017293312766" cy="204.37694101250946" r="3.5" fill="#e3b341" stroke="#0d1117" stroke-width="1"/><circle cx="355.80134541264516" cy="405.62305898749054" r="3.5" fill="#e3b341" stroke="#0d1117" stroke-width="1"/><circle cx="144.19865458735484" cy="405.62305898749054" r="3.5" fill="#e3b341" stroke="#0d1117" stroke-width="1"/><circle cx="179.91538915122817" cy="237.2281295324156" r="3.5" fill="#e3b341" stroke="#0d1117" stroke-width="1"/><g style="cursor:pointer"><title>phi4-mini:latest: exact=100% f1=1.00 lat=449ms</title><polygon points="250.0,80.0 421.19017293312766,204.37694101250946 355.80134541264516,405.62305898749054 144.19865458735484,405.62305898749054 110.83054225092397,214.78110206327196" fill="#f85149" fill-opacity="0.12" stroke="#f85149" stroke-width="2"/></g><circle cx="250.0" cy="80.0" r="3.5" fill="#f85149" stroke="#0d1117" stroke-width="1"/><circle cx="421.19017293312766" cy="204.37694101250946" r="3.5" fill="#f85149" stroke="#0d1117" stroke-width="1"/><circle cx="355.80134541264516" cy="405.62305898749054" r="3.5" fill="#f85149" stroke="#0d1117" stroke-width="1"/><circle cx="144.19865458735484" cy="405.62305898749054" r="3.5" fill="#f85149" stroke="#0d1117" stroke-width="1"/><circle cx="110.83054225092397" cy="214.78110206327196" r="3.5" fill="#f85149" stroke="#0d1117" stroke-width="1"/><g style="cursor:pointer"><title>ministral-3:3b: exact=80% f1=0.93 lat=545ms</title><polygon points="250.0,116.0 421.19017293312766,204.37694101250946 348.74792238513544,395.9148550549911 144.19865458735484,405.62305898749054 117.74111458073622,217.02648312547007" fill="#bc8cff" fill-opacity="0.12" stroke="#bc8cff" stroke-width="2"/></g><circle cx="250.0" cy="116.0" r="3.5" fill="#bc8cff" stroke="#0d1117" stroke-width="1"/><circle cx="421.19017293312766" cy="204.37694101250946" r="3.5" fill="#bc8cff" stroke="#0d1117" stroke-width="1"/><circle cx="348.74792238513544" cy="395.9148550549911" r="3.5" fill="#bc8cff" stroke="#0d1117" stroke-width="1"/><circle cx="144.19865458735484" cy="405.62305898749054" r="3.5" fill="#bc8cff" stroke="#0d1117" stroke-width="1"/><circle cx="117.74111458073622" cy="217.02648312547007" r="3.5" fill="#bc8cff" stroke="#0d1117" stroke-width="1"/><g style="cursor:pointer"><title>cogito:latest: exact=100% f1=1.00 lat=1599ms</title><polygon points="250.0,80.0 421.19017293312766,204.37694101250946 355.80134541264516,405.62305898749054 144.19865458735484,405.62305898749054 192.93660902229078,241.45898033750316" fill="#39d2c0" fill-opacity="0.12" stroke="#39d2c0" stroke-width="2"/></g><circle cx="250.0" cy="80.0" r="3.5" fill="#39d2c0" stroke="#0d1117" stroke-width="1"/><circle cx="421.19017293312766" cy="204.37694101250946" r="3.5" fill="#39d2c0" stroke="#0d1117" stroke-width="1"/><circle cx="355.80134541264516" cy="405.62305898749054" r="3.5" fill="#39d2c0" stroke="#0d1117" stroke-width="1"/><circle cx="144.19865458735484" cy="405.62305898749054" r="3.5" fill="#39d2c0" stroke="#0d1117" stroke-width="1"/><circle cx="192.93660902229078" cy="241.45898033750316" r="3.5" fill="#39d2c0" stroke="#0d1117" stroke-width="1"/><g style="cursor:pointer"><title>qwen2.5:7b: exact=100% f1=1.00 lat=110ms</title><polygon points="250.0,80.0 421.19017293312766,204.37694101250946 355.80134541264516,405.62305898749054 144.19865458735484,405.62305898749054 86.66865683550756,206.93042959368057" fill="#f778ba" fill-opacity="0.12" stroke="#f778ba" stroke-width="2"/></g><circle cx="250.0" cy="80.0" r="3.5" fill="#f778ba" stroke="#0d1117" stroke-width="1"/><circle cx="421.19017293312766" cy="204.37694101250946" r="3.5" fill="#f778ba" stroke="#0d1117" stroke-width="1"/><circle cx="355.80134541264516" cy="405.62305898749054" r="3.5" fill="#f778ba" stroke="#0d1117" stroke-width="1"/><circle cx="144.19865458735484" cy="405.62305898749054" r="3.5" fill="#f778ba" stroke="#0d1117" stroke-width="1"/><circle cx="86.66865683550756" cy="206.93042959368057" r="3.5" fill="#f778ba" stroke="#0d1117" stroke-width="1"/><g style="cursor:pointer"><title>qwen3:0.6b: exact=40% f1=0.60 lat=1526ms</title><polygon points="250.0,188.0 386.9521383465021,215.50155281000758 313.4808072475871,347.37383539249436 144.19865458735484,405.62305898749054 187.72515901893883,239.76567758548106" fill="#79c0ff" fill-opacity="0.12" stroke="#79c0ff" stroke-width="2"/></g><circle cx="250.0" cy="188.0" r="3.5" fill="#79c0ff" stroke="#0d1117" stroke-width="1"/><circle cx="386.9521383465021" cy="215.50155281000758" r="3.5" fill="#79c0ff" stroke="#0d1117" stroke-width="1"/><circle cx="313.4808072475871" cy="347.37383539249436" r="3.5" fill="#79c0ff" stroke="#0d1117" stroke-width="1"/><circle cx="144.19865458735484" cy="405.62305898749054" r="3.5" fill="#79c0ff" stroke="#0d1117" stroke-width="1"/><circle cx="187.72515901893883" cy="239.76567758548106" r="3.5" fill="#79c0ff" stroke="#0d1117" stroke-width="1"/><rect x="20" y="475" width="10" height="10" rx="2" fill="#58a6ff"/><text x="35" y="485" fill="#e6edf3" font-size="10">qwen2.5:3b</text><rect x="118" y="475" width="10" height="10" rx="2" fill="#3fb950"/><text x="133" y="485" fill="#e6edf3" font-size="10">qwen2.5:0.5b</text><rect x="230" y="475" width="10" height="10" rx="2" fill="#e3b341"/><text x="245" y="485" fill="#e6edf3" font-size="10">gemma2:2b-instruct-q5_K_M</text><rect x="20" y="491" width="10" height="10" rx="2" fill="#f85149"/><text x="35" y="501" fill="#e6edf3" font-size="10">phi4-mini:latest</text><rect x="160" y="491" width="10" height="10" rx="2" fill="#bc8cff"/><text x="175" y="501" fill="#e6edf3" font-size="10">ministral-3:3b</text><rect x="286" y="491" width="10" height="10" rx="2" fill="#39d2c0"/><text x="301" y="501" fill="#e6edf3" font-size="10">cogito:latest</text><rect x="20" y="507" width="10" height="10" rx="2" fill="#f778ba"/><text x="35" y="517" fill="#e6edf3" font-size="10">qwen2.5:7b</text><rect x="118" y="507" width="10" height="10" rx="2" fill="#79c0ff"/><text x="133" y="517" fill="#e6edf3" font-size="10">qwen3:0.6b</text></svg></div>
+    <div id="chart-heatmap" class="chart-container"></div>
   </div>
-  <div class="chart-card"><svg xmlns="http://www.w3.org/2000/svg" width="800" height="350" viewBox="0 0 800 350"><rect width="800" height="350" rx="8" fill="#0d1117"/><text x="400.0" y="30" text-anchor="middle" fill="#e6edf3" font-size="16" font-weight="600">Latency Comparison (avg + p95 whisker)</text><text x="400.0" y="48" text-anchor="middle" fill="#8b949e" font-size="12">Lower is better</text><line x1="80" y1="270.0" x2="770" y2="270.0" stroke="#30363d" stroke-width="1"/><line x1="80" y1="228.0" x2="770" y2="228.0" stroke="#30363d" stroke-width="1"/><line x1="80" y1="186.0" x2="770" y2="186.0" stroke="#30363d" stroke-width="1"/><line x1="80" y1="144.0" x2="770" y2="144.0" stroke="#30363d" stroke-width="1"/><line x1="80" y1="102.0" x2="770" y2="102.0" stroke="#30363d" stroke-width="1"/><line x1="80" y1="60.0" x2="770" y2="60.0" stroke="#30363d" stroke-width="1"/><g style="cursor:pointer"><title>qwen2.5:3b: avg=317ms p95=1138ms</title><line x1="138.03240740740742" y1="223.87075337655517" x2="138.03240740740742" y2="257.13845184063024" stroke="#58a6ff" stroke-width="2" opacity="0.5"/><line x1="130.03240740740742" y1="223.87075337655517" x2="146.03240740740742" y2="223.87075337655517" stroke="#58a6ff" stroke-width="2" opacity="0.5"/></g><g style="cursor:pointer"><title>qwen2.5:3b: 317ms avg</title><rect x="114.07407407407408" y="257.13845184063024" width="47.916666666666664" height="12.86154815936978" rx="3" fill="#58a6ff" opacity="0.85"><animate attributeName="height" from="0" to="12.86154815936978" dur="0.6s" fill="freeze"/><animate attributeName="y" from="270" to="257.13845184063024" dur="0.6s" fill="freeze"/></rect></g><text x="138.03240740740742" y="249.13845184063024" text-anchor="middle" fill="#e6edf3" font-size="11" font-weight="600">317ms</text><g style="cursor:pointer"><title>qwen2.5:0.5b: avg=293ms p95=989ms</title><line x1="220.02314814814815" y1="229.90410613281603" x2="220.02314814814815" y2="258.136804826719" stroke="#3fb950" stroke-width="2" opacity="0.5"/><line x1="212.02314814814815" y1="229.90410613281603" x2="228.02314814814815" y2="229.90410613281603" stroke="#3fb950" stroke-width="2" opacity="0.5"/></g><g style="cursor:pointer"><title>qwen2.5:0.5b: 293ms avg</title><rect x="196.0648148148148" y="258.136804826719" width="47.916666666666664" height="11.86319517328096" rx="3" fill="#3fb950" opacity="0.85"><animate attributeName="height" from="0" to="11.86319517328096" dur="0.6s" fill="freeze"/><animate attributeName="y" from="270" to="258.136804826719" dur="0.6s" fill="freeze"/></rect></g><text x="220.02314814814815" y="250.13680482671901" text-anchor="middle" fill="#e6edf3" font-size="11" font-weight="600">293ms</text><g style="cursor:pointer"><title>gemma2:2b-instruct-q5_K_M: avg=1416ms p95=4503ms</title><line x1="302.01388888888886" y1="87.3913043478261" x2="302.01388888888886" y2="212.57275633742697" stroke="#e3b341" stroke-width="2" opacity="0.5"/><line x1="294.01388888888886" y1="87.3913043478261" x2="310.01388888888886" y2="87.3913043478261" stroke="#e3b341" stroke-width="2" opacity="0.5"/></g><g style="cursor:pointer"><title>gemma2:2b-instruct-q5_K_M: 1416ms avg</title><rect x="278.05555555555554" y="212.57275633742697" width="47.916666666666664" height="57.42724366257303" rx="3" fill="#e3b341" opacity="0.85"><animate attributeName="height" from="0" to="57.42724366257303" dur="0.6s" fill="freeze"/><animate attributeName="y" from="270" to="212.57275633742697" dur="0.6s" fill="freeze"/></rect></g><text x="302.01388888888886" y="204.57275633742697" text-anchor="middle" fill="#e6edf3" font-size="11" font-weight="600">1416ms</text><g style="cursor:pointer"><title>phi4-mini:latest: avg=449ms p95=1675ms</title><line x1="384.0046296296296" y1="202.08421871238727" x2="384.0046296296296" y2="251.81246041053447" stroke="#f85149" stroke-width="2" opacity="0.5"/><line x1="376.0046296296296" y1="202.08421871238727" x2="392.0046296296296" y2="202.08421871238727" stroke="#f85149" stroke-width="2" opacity="0.5"/></g><g style="cursor:pointer"><title>phi4-mini:latest: 449ms avg</title><rect x="360.0462962962963" y="251.81246041053447" width="47.916666666666664" height="18.18753958946552" rx="3" fill="#f85149" opacity="0.85"><animate attributeName="height" from="0" to="18.18753958946552" dur="0.6s" fill="freeze"/><animate attributeName="y" from="270" to="251.81246041053447" dur="0.6s" fill="freeze"/></rect></g><text x="384.0046296296296" y="243.81246041053447" text-anchor="middle" fill="#e6edf3" font-size="11" font-weight="600">449ms</text><g style="cursor:pointer"><title>ministral-3:3b: avg=545ms p95=2150ms</title><line x1="465.9953703703703" y1="182.8315770897409" x2="465.9953703703703" y2="247.88730423860346" stroke="#bc8cff" stroke-width="2" opacity="0.5"/><line x1="457.9953703703703" y1="182.8315770897409" x2="473.9953703703703" y2="182.8315770897409" stroke="#bc8cff" stroke-width="2" opacity="0.5"/></g><g style="cursor:pointer"><title>ministral-3:3b: 545ms avg</title><rect x="442.037037037037" y="247.88730423860346" width="47.916666666666664" height="22.112695761396523" rx="3" fill="#bc8cff" opacity="0.85"><animate attributeName="height" from="0" to="22.112695761396523" dur="0.6s" fill="freeze"/><animate attributeName="y" from="270" to="247.88730423860346" dur="0.6s" fill="freeze"/></rect></g><text x="465.9953703703703" y="239.88730423860346" text-anchor="middle" fill="#e6edf3" font-size="11" font-weight="600">545ms</text><g style="cursor:pointer"><title>cogito:latest: avg=1599ms p95=2025ms</title><line x1="547.9861111111112" y1="187.87299448105415" x2="547.9861111111112" y2="205.17679561178898" stroke="#39d2c0" stroke-width="2" opacity="0.5"/><line x1="539.9861111111112" y1="187.87299448105415" x2="555.9861111111112" y2="187.87299448105415" stroke="#39d2c0" stroke-width="2" opacity="0.5"/></g><g style="cursor:pointer"><title>cogito:latest: 1599ms avg</title><rect x="524.0277777777778" y="205.17679561178898" width="47.916666666666664" height="64.82320438821104" rx="3" fill="#39d2c0" opacity="0.85"><animate attributeName="height" from="0" to="64.82320438821104" dur="0.6s" fill="freeze"/><animate attributeName="y" from="270" to="205.17679561178898" dur="0.6s" fill="freeze"/></rect></g><text x="547.9861111111112" y="197.17679561178898" text-anchor="middle" fill="#e6edf3" font-size="11" font-weight="600">1599ms</text><g style="cursor:pointer"><title>qwen2.5:7b: avg=110ms p95=133ms</title><line x1="629.9768518518518" y1="264.6023234439159" x2="629.9768518518518" y2="265.5362403143602" stroke="#f778ba" stroke-width="2" opacity="0.5"/><line x1="621.9768518518518" y1="264.6023234439159" x2="637.9768518518518" y2="264.6023234439159" stroke="#f778ba" stroke-width="2" opacity="0.5"/></g><g style="cursor:pointer"><title>qwen2.5:7b: 110ms avg</title><rect x="606.0185185185185" y="265.5362403143602" width="47.916666666666664" height="4.463759685639774" rx="3" fill="#f778ba" opacity="0.85"><animate attributeName="height" from="0" to="4.463759685639774" dur="0.6s" fill="freeze"/><animate attributeName="y" from="270" to="265.5362403143602" dur="0.6s" fill="freeze"/></rect></g><text x="629.9768518518518" y="257.5362403143602" text-anchor="middle" fill="#e6edf3" font-size="11" font-weight="600">110ms</text><g style="cursor:pointer"><title>qwen3:0.6b: avg=1526ms p95=1805ms</title><line x1="711.9675925925925" y1="196.78804578224236" x2="711.9675925925925" y2="208.1368623282779" stroke="#79c0ff" stroke-width="2" opacity="0.5"/><line x1="703.9675925925925" y1="196.78804578224236" x2="719.9675925925925" y2="196.78804578224236" stroke="#79c0ff" stroke-width="2" opacity="0.5"/></g><g style="cursor:pointer"><title>qwen3:0.6b: 1526ms avg</title><rect x="688.0092592592591" y="208.1368623282779" width="47.916666666666664" height="61.86313767172207" rx="3" fill="#79c0ff" opacity="0.85"><animate attributeName="height" from="0" to="61.86313767172207" dur="0.6s" fill="freeze"/><animate attributeName="y" from="270" to="208.1368623282779" dur="0.6s" fill="freeze"/></rect></g><text x="711.9675925925925" y="200.1368623282779" text-anchor="middle" fill="#e6edf3" font-size="11" font-weight="600">1526ms</text><text x="70" y="274.0" text-anchor="end" fill="#8b949e" font-size="11">0ms</text><text x="70" y="232.0" text-anchor="end" fill="#8b949e" font-size="11">1036ms</text><text x="70" y="190.0" text-anchor="end" fill="#8b949e" font-size="11">2072ms</text><text x="70" y="148.0" text-anchor="end" fill="#8b949e" font-size="11">3107ms</text><text x="70" y="106.0" text-anchor="end" fill="#8b949e" font-size="11">4143ms</text><text x="70" y="64.0" text-anchor="end" fill="#8b949e" font-size="11">5179ms</text><text x="138.03240740740742" y="284" text-anchor="end" fill="#e6edf3" font-size="11" transform="rotate(-35 138.03240740740742 284)">qwen2.5:3b</text><text x="220.02314814814815" y="284" text-anchor="end" fill="#e6edf3" font-size="11" transform="rotate(-35 220.02314814814815 284)">qwen2.5:0.5b</text><text x="302.01388888888886" y="284" text-anchor="end" fill="#e6edf3" font-size="11" transform="rotate(-35 302.01388888888886 284)">gemma2:2b-instruct-q5_K_M</text><text x="384.0046296296296" y="284" text-anchor="end" fill="#e6edf3" font-size="11" transform="rotate(-35 384.0046296296296 284)">phi4-mini:latest</text><text x="465.9953703703703" y="284" text-anchor="end" fill="#e6edf3" font-size="11" transform="rotate(-35 465.9953703703703 284)">ministral-3:3b</text><text x="547.9861111111112" y="284" text-anchor="end" fill="#e6edf3" font-size="11" transform="rotate(-35 547.9861111111112 284)">cogito:latest</text><text x="629.9768518518518" y="284" text-anchor="end" fill="#e6edf3" font-size="11" transform="rotate(-35 629.9768518518518 284)">qwen2.5:7b</text><text x="711.9675925925925" y="284" text-anchor="end" fill="#e6edf3" font-size="11" transform="rotate(-35 711.9675925925925 284)">qwen3:0.6b</text></svg></div>
-  <div class="chart-card full"><svg xmlns="http://www.w3.org/2000/svg" width="800" height="520" viewBox="0 0 800 520"><rect width="800" height="520" rx="8" fill="#0d1117"/><text x="400.0" y="30" text-anchor="middle" fill="#e6edf3" font-size="16" font-weight="600">Model Comparison — Accuracy Metrics</text><line x1="160" y1="60" x2="160" y2="420" stroke="#30363d" stroke-width="1"/><line x1="312.5" y1="60" x2="312.5" y2="420" stroke="#30363d" stroke-width="1"/><line x1="465.0" y1="60" x2="465.0" y2="420" stroke="#30363d" stroke-width="1"/><line x1="617.5" y1="60" x2="617.5" y2="420" stroke="#30363d" stroke-width="1"/><line x1="770.0" y1="60" x2="770.0" y2="420" stroke="#30363d" stroke-width="1"/><g class="bar-group" style="cursor:pointer"><title>qwen2.5:3b: 80.0%</title><rect x="160" y="73.0" width="488.0" height="6.8" rx="3" fill="#58a6ff" opacity="0.85"><animate attributeName="width" from="0" to="488.0" dur="0.6s" fill="freeze"/></rect></g><text x="640.0" y="77.4" text-anchor="end" fill="#0d1117" font-size="11" font-weight="600">80.0%</text><g class="bar-group" style="cursor:pointer"><title>qwen2.5:0.5b: 0.0%</title><rect x="160" y="81.0" width="0" height="6.8" rx="3" fill="#3fb950" opacity="0.85"><animate attributeName="width" from="0" to="0" dur="0.6s" fill="freeze"/></rect></g><g class="bar-group" style="cursor:pointer"><title>gemma2:2b-instruct-q5_K_M: 100.0%</title><rect x="160" y="89.0" width="610.0" height="6.8" rx="3" fill="#e3b341" opacity="0.85"><animate attributeName="width" from="0" to="610.0" dur="0.6s" fill="freeze"/></rect></g><text x="762.0" y="93.4" text-anchor="end" fill="#0d1117" font-size="11" font-weight="600">100.0%</text><g class="bar-group" style="cursor:pointer"><title>phi4-mini:latest: 100.0%</title><rect x="160" y="97.0" width="610.0" height="6.8" rx="3" fill="#f85149" opacity="0.85"><animate attributeName="width" from="0" to="610.0" dur="0.6s" fill="freeze"/></rect></g><text x="762.0" y="101.4" text-anchor="end" fill="#0d1117" font-size="11" font-weight="600">100.0%</text><g class="bar-group" style="cursor:pointer"><title>ministral-3:3b: 80.0%</title><rect x="160" y="105.0" width="488.0" height="6.8" rx="3" fill="#bc8cff" opacity="0.85"><animate attributeName="width" from="0" to="488.0" dur="0.6s" fill="freeze"/></rect></g><text x="640.0" y="109.4" text-anchor="end" fill="#0d1117" font-size="11" font-weight="600">80.0%</text><g class="bar-group" style="cursor:pointer"><title>cogito:latest: 100.0%</title><rect x="160" y="113.0" width="610.0" height="6.8" rx="3" fill="#39d2c0" opacity="0.85"><animate attributeName="width" from="0" to="610.0" dur="0.6s" fill="freeze"/></rect></g><text x="762.0" y="117.4" text-anchor="end" fill="#0d1117" font-size="11" font-weight="600">100.0%</text><g class="bar-group" style="cursor:pointer"><title>qwen2.5:7b: 100.0%</title><rect x="160" y="121.0" width="610.0" height="6.8" rx="3" fill="#f778ba" opacity="0.85"><animate attributeName="width" from="0" to="610.0" dur="0.6s" fill="freeze"/></rect></g><text x="762.0" y="125.4" text-anchor="end" fill="#0d1117" font-size="11" font-weight="600">100.0%</text><g class="bar-group" style="cursor:pointer"><title>qwen3:0.6b: 40.0%</title><rect x="160" y="129.0" width="244.0" height="6.8" rx="3" fill="#79c0ff" opacity="0.85"><animate attributeName="width" from="0" to="244.0" dur="0.6s" fill="freeze"/></rect></g><text x="396.0" y="133.4" text-anchor="end" fill="#0d1117" font-size="11" font-weight="600">40.0%</text><g class="bar-group" style="cursor:pointer"><title>qwen2.5:3b: 80.0%</title><rect x="160" y="163.0" width="488.0" height="6.8" rx="3" fill="#58a6ff" opacity="0.85"><animate attributeName="width" from="0" to="488.0" dur="0.6s" fill="freeze"/></rect></g><text x="640.0" y="167.4" text-anchor="end" fill="#0d1117" font-size="11" font-weight="600">80.0%</text><g class="bar-group" style="cursor:pointer"><title>qwen2.5:0.5b: 100.0%</title><rect x="160" y="171.0" width="610.0" height="6.8" rx="3" fill="#3fb950" opacity="0.85"><animate attributeName="width" from="0" to="610.0" dur="0.6s" fill="freeze"/></rect></g><text x="762.0" y="175.4" text-anchor="end" fill="#0d1117" font-size="11" font-weight="600">100.0%</text><g class="bar-group" style="cursor:pointer"><title>gemma2:2b-instruct-q5_K_M: 100.0%</title><rect x="160" y="179.0" width="610.0" height="6.8" rx="3" fill="#e3b341" opacity="0.85"><animate attributeName="width" from="0" to="610.0" dur="0.6s" fill="freeze"/></rect></g><text x="762.0" y="183.4" text-anchor="end" fill="#0d1117" font-size="11" font-weight="600">100.0%</text><g class="bar-group" style="cursor:pointer"><title>phi4-mini:latest: 100.0%</title><rect x="160" y="187.0" width="610.0" height="6.8" rx="3" fill="#f85149" opacity="0.85"><animate attributeName="width" from="0" to="610.0" dur="0.6s" fill="freeze"/></rect></g><text x="762.0" y="191.4" text-anchor="end" fill="#0d1117" font-size="11" font-weight="600">100.0%</text><g class="bar-group" style="cursor:pointer"><title>ministral-3:3b: 100.0%</title><rect x="160" y="195.0" width="610.0" height="6.8" rx="3" fill="#bc8cff" opacity="0.85"><animate attributeName="width" from="0" to="610.0" dur="0.6s" fill="freeze"/></rect></g><text x="762.0" y="199.4" text-anchor="end" fill="#0d1117" font-size="11" font-weight="600">100.0%</text><g class="bar-group" style="cursor:pointer"><title>cogito:latest: 100.0%</title><rect x="160" y="203.0" width="610.0" height="6.8" rx="3" fill="#39d2c0" opacity="0.85"><animate attributeName="width" from="0" to="610.0" dur="0.6s" fill="freeze"/></rect></g><text x="762.0" y="207.4" text-anchor="end" fill="#0d1117" font-size="11" font-weight="600">100.0%</text><g class="bar-group" style="cursor:pointer"><title>qwen2.5:7b: 100.0%</title><rect x="160" y="211.0" width="610.0" height="6.8" rx="3" fill="#f778ba" opacity="0.85"><animate attributeName="width" from="0" to="610.0" dur="0.6s" fill="freeze"/></rect></g><text x="762.0" y="215.4" text-anchor="end" fill="#0d1117" font-size="11" font-weight="600">100.0%</text><g class="bar-group" style="cursor:pointer"><title>qwen3:0.6b: 80.0%</title><rect x="160" y="219.0" width="488.0" height="6.8" rx="3" fill="#79c0ff" opacity="0.85"><animate attributeName="width" from="0" to="488.0" dur="0.6s" fill="freeze"/></rect></g><text x="640.0" y="223.4" text-anchor="end" fill="#0d1117" font-size="11" font-weight="600">80.0%</text><g class="bar-group" style="cursor:pointer"><title>qwen2.5:3b: 91.4%</title><rect x="160" y="253.0" width="557.7142857142857" height="6.8" rx="3" fill="#58a6ff" opacity="0.85"><animate attributeName="width" from="0" to="557.7142857142857" dur="0.6s" fill="freeze"/></rect></g><text x="709.7142857142857" y="257.4" text-anchor="end" fill="#0d1117" font-size="11" font-weight="600">91.4%</text><g class="bar-group" style="cursor:pointer"><title>qwen2.5:0.5b: 48.3%</title><rect x="160" y="261.0" width="294.8333333333333" height="6.8" rx="3" fill="#3fb950" opacity="0.85"><animate attributeName="width" from="0" to="294.8333333333333" dur="0.6s" fill="freeze"/></rect></g><text x="446.8333333333333" y="265.4" text-anchor="end" fill="#0d1117" font-size="11" font-weight="600">48.3%</text><g class="bar-group" style="cursor:pointer"><title>gemma2:2b-instruct-q5_K_M: 100.0%</title><rect x="160" y="269.0" width="610.0" height="6.8" rx="3" fill="#e3b341" opacity="0.85"><animate attributeName="width" from="0" to="610.0" dur="0.6s" fill="freeze"/></rect></g><text x="762.0" y="273.4" text-anchor="end" fill="#0d1117" font-size="11" font-weight="600">100.0%</text><g class="bar-group" style="cursor:pointer"><title>phi4-mini:latest: 100.0%</title><rect x="160" y="277.0" width="610.0" height="6.8" rx="3" fill="#f85149" opacity="0.85"><animate attributeName="width" from="0" to="610.0" dur="0.6s" fill="freeze"/></rect></g><text x="762.0" y="281.4" text-anchor="end" fill="#0d1117" font-size="11" font-weight="600">100.0%</text><g class="bar-group" style="cursor:pointer"><title>ministral-3:3b: 93.3%</title><rect x="160" y="285.0" width="569.3333333333333" height="6.8" rx="3" fill="#bc8cff" opacity="0.85"><animate attributeName="width" from="0" to="569.3333333333333" dur="0.6s" fill="freeze"/></rect></g><text x="721.3333333333333" y="289.4" text-anchor="end" fill="#0d1117" font-size="11" font-weight="600">93.3%</text><g class="bar-group" style="cursor:pointer"><title>cogito:latest: 100.0%</title><rect x="160" y="293.0" width="610.0" height="6.8" rx="3" fill="#39d2c0" opacity="0.85"><animate attributeName="width" from="0" to="610.0" dur="0.6s" fill="freeze"/></rect></g><text x="762.0" y="297.4" text-anchor="end" fill="#0d1117" font-size="11" font-weight="600">100.0%</text><g class="bar-group" style="cursor:pointer"><title>qwen2.5:7b: 100.0%</title><rect x="160" y="301.0" width="610.0" height="6.8" rx="3" fill="#f778ba" opacity="0.85"><animate attributeName="width" from="0" to="610.0" dur="0.6s" fill="freeze"/></rect></g><text x="762.0" y="305.4" text-anchor="end" fill="#0d1117" font-size="11" font-weight="600">100.0%</text><g class="bar-group" style="cursor:pointer"><title>qwen3:0.6b: 60.0%</title><rect x="160" y="309.0" width="366.0" height="6.8" rx="3" fill="#79c0ff" opacity="0.85"><animate attributeName="width" from="0" to="366.0" dur="0.6s" fill="freeze"/></rect></g><text x="518.0" y="313.4" text-anchor="end" fill="#0d1117" font-size="11" font-weight="600">60.0%</text><g class="bar-group" style="cursor:pointer"><title>qwen2.5:3b: 100.0%</title><rect x="160" y="343.0" width="610.0" height="6.8" rx="3" fill="#58a6ff" opacity="0.85"><animate attributeName="width" from="0" to="610.0" dur="0.6s" fill="freeze"/></rect></g><text x="762.0" y="347.4" text-anchor="end" fill="#0d1117" font-size="11" font-weight="600">100.0%</text><g class="bar-group" style="cursor:pointer"><title>qwen2.5:0.5b: 100.0%</title><rect x="160" y="351.0" width="610.0" height="6.8" rx="3" fill="#3fb950" opacity="0.85"><animate attributeName="width" from="0" to="610.0" dur="0.6s" fill="freeze"/></rect></g><text x="762.0" y="355.4" text-anchor="end" fill="#0d1117" font-size="11" font-weight="600">100.0%</text><g class="bar-group" style="cursor:pointer"><title>gemma2:2b-instruct-q5_K_M: 100.0%</title><rect x="160" y="359.0" width="610.0" height="6.8" rx="3" fill="#e3b341" opacity="0.85"><animate attributeName="width" from="0" to="610.0" dur="0.6s" fill="freeze"/></rect></g><text x="762.0" y="363.4" text-anchor="end" fill="#0d1117" font-size="11" font-weight="600">100.0%</text><g class="bar-group" style="cursor:pointer"><title>phi4-mini:latest: 100.0%</title><rect x="160" y="367.0" width="610.0" height="6.8" rx="3" fill="#f85149" opacity="0.85"><animate attributeName="width" from="0" to="610.0" dur="0.6s" fill="freeze"/></rect></g><text x="762.0" y="371.4" text-anchor="end" fill="#0d1117" font-size="11" font-weight="600">100.0%</text><g class="bar-group" style="cursor:pointer"><title>ministral-3:3b: 100.0%</title><rect x="160" y="375.0" width="610.0" height="6.8" rx="3" fill="#bc8cff" opacity="0.85"><animate attributeName="width" from="0" to="610.0" dur="0.6s" fill="freeze"/></rect></g><text x="762.0" y="379.4" text-anchor="end" fill="#0d1117" font-size="11" font-weight="600">100.0%</text><g class="bar-group" style="cursor:pointer"><title>cogito:latest: 100.0%</title><rect x="160" y="383.0" width="610.0" height="6.8" rx="3" fill="#39d2c0" opacity="0.85"><animate attributeName="width" from="0" to="610.0" dur="0.6s" fill="freeze"/></rect></g><text x="762.0" y="387.4" text-anchor="end" fill="#0d1117" font-size="11" font-weight="600">100.0%</text><g class="bar-group" style="cursor:pointer"><title>qwen2.5:7b: 100.0%</title><rect x="160" y="391.0" width="610.0" height="6.8" rx="3" fill="#f778ba" opacity="0.85"><animate attributeName="width" from="0" to="610.0" dur="0.6s" fill="freeze"/></rect></g><text x="762.0" y="395.4" text-anchor="end" fill="#0d1117" font-size="11" font-weight="600">100.0%</text><g class="bar-group" style="cursor:pointer"><title>qwen3:0.6b: 100.0%</title><rect x="160" y="399.0" width="610.0" height="6.8" rx="3" fill="#79c0ff" opacity="0.85"><animate attributeName="width" from="0" to="610.0" dur="0.6s" fill="freeze"/></rect></g><text x="762.0" y="403.4" text-anchor="end" fill="#0d1117" font-size="11" font-weight="600">100.0%</text><text x="160" y="440" text-anchor="middle" fill="#8b949e" font-size="12">0%</text><text x="312.5" y="440" text-anchor="middle" fill="#8b949e" font-size="12">25%</text><text x="465.0" y="440" text-anchor="middle" fill="#8b949e" font-size="12">50%</text><text x="617.5" y="440" text-anchor="middle" fill="#8b949e" font-size="12">75%</text><text x="770.0" y="440" text-anchor="middle" fill="#8b949e" font-size="12">100%</text><text x="150" y="110.0" text-anchor="end" fill="#e6edf3" font-size="13" font-weight="500">Exact Match</text><text x="150" y="200.0" text-anchor="end" fill="#e6edf3" font-size="13" font-weight="500">Contains</text><text x="150" y="290.0" text-anchor="end" fill="#e6edf3" font-size="13" font-weight="500">Token F1</text><text x="150" y="380.0" text-anchor="end" fill="#e6edf3" font-size="13" font-weight="500">Judge Correct</text><rect x="160" y="470" width="12" height="12" rx="2" fill="#58a6ff"/><text x="178" y="481" fill="#e6edf3" font-size="11">qwen2.5:3b</text><rect x="265.0" y="470" width="12" height="12" rx="2" fill="#3fb950"/><text x="283.0" y="481" fill="#e6edf3" font-size="11">qwen2.5:0.5b</text><rect x="385.0" y="470" width="12" height="12" rx="2" fill="#e3b341"/><text x="403.0" y="481" fill="#e6edf3" font-size="11">gemma2:2b-instruct-q5_K_M</text><rect x="602.5" y="470" width="12" height="12" rx="2" fill="#f85149"/><text x="620.5" y="481" fill="#e6edf3" font-size="11">phi4-mini:latest</text><rect x="160" y="488" width="12" height="12" rx="2" fill="#bc8cff"/><text x="178" y="499" fill="#e6edf3" font-size="11">ministral-3:3b</text><rect x="295.0" y="488" width="12" height="12" rx="2" fill="#39d2c0"/><text x="313.0" y="499" fill="#e6edf3" font-size="11">cogito:latest</text><rect x="422.5" y="488" width="12" height="12" rx="2" fill="#f778ba"/><text x="440.5" y="499" fill="#e6edf3" font-size="11">qwen2.5:7b</text><rect x="527.5" y="488" width="12" height="12" rx="2" fill="#79c0ff"/><text x="545.5" y="499" fill="#e6edf3" font-size="11">qwen3:0.6b</text></svg></div>
+  <div class="chart-card">
+    <div id="chart-scatter" class="chart-container"></div>
+  </div>
+  <div class="chart-card full">
+    <div id="chart-bars" class="chart-container"></div>
+  </div>
+  <div class="chart-card full">
+    <div id="chart-latency" class="chart-container tall"></div>
+  </div>
 </div>
 
 <div class="section-title">All Runs</div>
-<table id="results-table">
+<table id="runs-table">
   <thead>
     <tr>
-      <th data-col="0" data-type="str" onclick="sortTable(this)">Model <span class="sort-arrow">▲</span></th>
-      <th data-col="1" data-type="num" onclick="sortTable(this)">Exact Match <span class="sort-arrow">▲</span></th>
-      <th data-col="2" data-type="num" onclick="sortTable(this)">Contains <span class="sort-arrow">▲</span></th>
-      <th data-col="3" data-type="num" onclick="sortTable(this)">Token F1 <span class="sort-arrow">▲</span></th>
-      <th data-col="4" data-type="num" onclick="sortTable(this)">Avg Latency <span class="sort-arrow">▲</span></th>
-      <th data-col="5" data-type="num" onclick="sortTable(this)">Judge <span class="sort-arrow">▲</span></th>
-      <th data-col="6" data-type="str" onclick="sortTable(this)">Date <span class="sort-arrow">▲</span></th>
+      <th data-col="model">Model <span class="sort-arrow"></span></th>
+      <th data-col="accuracy">Exact Match <span class="sort-arrow"></span></th>
+      <th data-col="contains">Contains <span class="sort-arrow"></span></th>
+      <th data-col="f1">Token F1 <span class="sort-arrow"></span></th>
+      <th data-col="latency">Avg Latency <span class="sort-arrow"></span></th>
+      <th data-col="judge">Judge <span class="sort-arrow"></span></th>
+      <th data-col="date">Date <span class="sort-arrow"></span></th>
     </tr>
   </thead>
   <tbody>
-        <tr data-run-id="1" onclick="showDetails(1)">
-            <td class="model-name">qwen2.5:3b</td>
-            <td>80.0%</td>
-            <td>80.0%</td>
-            <td>0.914</td>
-            <td>317ms</td>
-            <td>100.0%</td>
-            <td class="dim">2026-04-13T19:09:55</td>
-        </tr>
-        <tr data-run-id="2" onclick="showDetails(2)">
-            <td class="model-name">qwen2.5:0.5b</td>
-            <td>0.0%</td>
-            <td>100.0%</td>
-            <td>0.483</td>
-            <td>293ms</td>
-            <td>100.0%</td>
-            <td class="dim">2026-04-13T19:10:36</td>
-        </tr>
-        <tr data-run-id="3" onclick="showDetails(3)">
-            <td class="model-name">gemma2:2b-instruct-q5_K_M</td>
-            <td>100.0%</td>
-            <td>100.0%</td>
-            <td>1.000</td>
-            <td>1416ms</td>
-            <td>100.0%</td>
-            <td class="dim">2026-04-13T19:41:02</td>
-        </tr>
-        <tr data-run-id="4" onclick="showDetails(4)">
-            <td class="model-name">phi4-mini:latest</td>
-            <td>100.0%</td>
-            <td>100.0%</td>
-            <td>1.000</td>
-            <td>449ms</td>
-            <td>100.0%</td>
-            <td class="dim">2026-04-13T19:41:35</td>
-        </tr>
-        <tr data-run-id="5" onclick="showDetails(5)">
-            <td class="model-name">ministral-3:3b</td>
-            <td>80.0%</td>
-            <td>100.0%</td>
-            <td>0.933</td>
-            <td>545ms</td>
-            <td>100.0%</td>
-            <td class="dim">2026-04-13T19:41:45</td>
-        </tr>
-        <tr data-run-id="6" onclick="showDetails(6)">
-            <td class="model-name">cogito:latest</td>
-            <td>100.0%</td>
-            <td>100.0%</td>
-            <td>1.000</td>
-            <td>1599ms</td>
-            <td>100.0%</td>
-            <td class="dim">2026-04-13T19:42:05</td>
-        </tr>
-        <tr data-run-id="7" onclick="showDetails(7)">
-            <td class="model-name">qwen2.5:7b</td>
-            <td>100.0%</td>
-            <td>100.0%</td>
-            <td>1.000</td>
-            <td>110ms</td>
-            <td>100.0%</td>
-            <td class="dim">2026-04-13T19:42:12</td>
-        </tr>
-        <tr data-run-id="8" onclick="showDetails(8)">
-            <td class="model-name">qwen3:0.6b</td>
-            <td>40.0%</td>
-            <td>80.0%</td>
-            <td>0.600</td>
-            <td>1526ms</td>
-            <td>100.0%</td>
-            <td class="dim">2026-04-13T19:42:33</td>
-        </tr></tbody>
+    <tr data-run-id="1" onclick="showDetails(1)">
+    <td class="model-name">qwen2.5:3b</td>
+    <td>80.0%</td>
+    <td>80.0%</td>
+    <td>0.914</td>
+    <td>317ms</td>
+    <td>100.0%</td>
+    <td class="dim">2026-04-13T19:09:55</td>
+</tr>
+<tr data-run-id="2" onclick="showDetails(2)">
+    <td class="model-name">qwen2.5:0.5b</td>
+    <td>0.0%</td>
+    <td>100.0%</td>
+    <td>0.483</td>
+    <td>293ms</td>
+    <td>100.0%</td>
+    <td class="dim">2026-04-13T19:10:36</td>
+</tr>
+<tr data-run-id="3" onclick="showDetails(3)">
+    <td class="model-name">gemma2:2b-instruct-q5_K_M</td>
+    <td>100.0%</td>
+    <td>100.0%</td>
+    <td>1.000</td>
+    <td>1416ms</td>
+    <td>100.0%</td>
+    <td class="dim">2026-04-13T19:41:02</td>
+</tr>
+<tr data-run-id="4" onclick="showDetails(4)">
+    <td class="model-name">phi4-mini:latest</td>
+    <td>100.0%</td>
+    <td>100.0%</td>
+    <td>1.000</td>
+    <td>449ms</td>
+    <td>100.0%</td>
+    <td class="dim">2026-04-13T19:41:35</td>
+</tr>
+<tr data-run-id="5" onclick="showDetails(5)">
+    <td class="model-name">ministral-3:3b</td>
+    <td>80.0%</td>
+    <td>100.0%</td>
+    <td>0.933</td>
+    <td>545ms</td>
+    <td>100.0%</td>
+    <td class="dim">2026-04-13T19:41:45</td>
+</tr>
+<tr data-run-id="6" onclick="showDetails(6)">
+    <td class="model-name">cogito:latest</td>
+    <td>100.0%</td>
+    <td>100.0%</td>
+    <td>1.000</td>
+    <td>1599ms</td>
+    <td>100.0%</td>
+    <td class="dim">2026-04-13T19:42:05</td>
+</tr>
+<tr data-run-id="7" onclick="showDetails(7)">
+    <td class="model-name">qwen2.5:7b</td>
+    <td>100.0%</td>
+    <td>100.0%</td>
+    <td>1.000</td>
+    <td>110ms</td>
+    <td>100.0%</td>
+    <td class="dim">2026-04-13T19:42:12</td>
+</tr>
+<tr data-run-id="8" onclick="showDetails(8)">
+    <td class="model-name">qwen3:0.6b</td>
+    <td>40.0%</td>
+    <td>80.0%</td>
+    <td>0.600</td>
+    <td>1526ms</td>
+    <td>100.0%</td>
+    <td class="dim">2026-04-13T19:42:33</td>
+</tr>
+
+  </tbody>
 </table>
 
 <div class="section-title">Per-Item Details <span class="dim" style="font-weight:400;font-size:0.85rem">(click a run above)</span></div>
 <div id="details-panel"></div>
 
 <script>
-const DATA = {"1": {"model": "qwen2.5:3b", "dataset": "datasets/sample_qa.jsonl", "items": [{"prompt": "What is the capital of France?", "expected": "Paris", "response": "Paris", "latency_s": 1.138, "exact_match": true, "contains": true, "token_f1": 1.0, "judge_verdict": "correct", "judge_reason": "The response contains the right answer."}, {"prompt": "What language is primarily used for iOS development?", "expected": "Swift", "response": "Swift", "latency_s": 0.102, "exact_match": true, "contains": true, "token_f1": 1.0, "judge_verdict": "correct", "judge_reason": "The response matches the expected answer."}, {"prompt": "What does HTTP stand for?", "expected": "HyperText Transfer Protocol", "response": "Hyper Text Transfer Protocol", "latency_s": 0.121, "exact_match": false, "contains": false, "token_f1": 0.5714285714285715, "judge_verdict": "correct", "judge_reason": "The response matches the expected answer exactly."}, {"prompt": "What is 15 * 17?", "expected": "255", "response": "255", "latency_s": 0.116, "exact_match": true, "contains": true, "token_f1": 1.0, "judge_verdict": "correct", "judge_reason": "The model's response matches the expected answer."}, {"prompt": "Name the process by which plants convert sunlight into energy.", "expected": "Photosynthesis", "response": "Photosynthesis", "latency_s": 0.109, "exact_match": true, "contains": true, "token_f1": 1.0, "judge_verdict": "correct", "judge_reason": "The model's response matches the expected answer."}]}, "2": {"model": "qwen2.5:0.5b", "dataset": "datasets/sample_qa.jsonl", "items": [{"prompt": "What is the capital of France?", "expected": "Paris", "response": "The capital of France is Paris.", "latency_s": 0.989, "exact_match": false, "contains": true, "token_f1": 0.33333333333333337, "judge_verdict": "correct", "judge_reason": "The response contains the right answer."}, {"prompt": "What language is primarily used for iOS development?", "expected": "Swift", "response": "Swift is primarily used for iOS development.", "latency_s": 0.13, "exact_match": false, "contains": true, "token_f1": 0.25, "judge_verdict": "correct", "judge_reason": "The response accurately states that Swift is primarily used for iOS development."}, {"prompt": "What does HTTP stand for?", "expected": "HyperText Transfer Protocol", "response": "HTTP stands for Hypertext Transfer Protocol.", "latency_s": 0.109, "exact_match": false, "contains": true, "token_f1": 0.6666666666666666, "judge_verdict": "correct", "judge_reason": "The response contains the right answer, even if the wording is slightly different."}, {"prompt": "What is 15 * 17?", "expected": "255", "response": "15 * 17 = 255", "latency_s": 0.12, "exact_match": false, "contains": true, "token_f1": 0.5, "judge_verdict": "correct", "judge_reason": "The response correctly states the answer."}, {"prompt": "Name the process by which plants convert sunlight into energy.", "expected": "Photosynthesis", "response": "Photosynthesis process.", "latency_s": 0.115, "exact_match": false, "contains": true, "token_f1": 0.6666666666666666, "judge_verdict": "correct", "judge_reason": "The response contains the correct answer 'Photosynthesis process'."}]}, "3": {"model": "gemma2:2b-instruct-q5_K_M", "dataset": "datasets/sample_qa.jsonl", "items": [{"prompt": "What is the capital of France?", "expected": "Paris", "response": "Paris", "latency_s": 4.503, "exact_match": true, "contains": true, "token_f1": 1.0, "judge_verdict": "correct", "judge_reason": "The response contains the right answer."}, {"prompt": "What language is primarily used for iOS development?", "expected": "Swift", "response": "Swift", "latency_s": 2.19, "exact_match": true, "contains": true, "token_f1": 1.0, "judge_verdict": "correct", "judge_reason": "The response matches the expected answer."}, {"prompt": "What does HTTP stand for?", "expected": "HyperText Transfer Protocol", "response": "Hypertext Transfer Protocol", "latency_s": 0.133, "exact_match": true, "contains": true, "token_f1": 1.0, "judge_verdict": "correct", "judge_reason": "The model response matches the expected answer, just with a minor difference in spacing."}, {"prompt": "What is 15 * 17?", "expected": "255", "response": "255", "latency_s": 0.13, "exact_match": true, "contains": true, "token_f1": 1.0, "judge_verdict": "correct", "judge_reason": "The model's response matches the expected answer."}, {"prompt": "Name the process by which plants convert sunlight into energy.", "expected": "Photosynthesis", "response": "Photosynthesis", "latency_s": 0.124, "exact_match": true, "contains": true, "token_f1": 1.0, "judge_verdict": "correct", "judge_reason": "The model's response matches the expected answer."}]}, "4": {"model": "phi4-mini:latest", "dataset": "datasets/sample_qa.jsonl", "items": [{"prompt": "What is the capital of France?", "expected": "Paris", "response": "Paris", "latency_s": 1.675, "exact_match": true, "contains": true, "token_f1": 1.0, "judge_verdict": "correct", "judge_reason": "The response contains the right answer."}, {"prompt": "What language is primarily used for iOS development?", "expected": "Swift", "response": "Swift", "latency_s": 0.137, "exact_match": true, "contains": true, "token_f1": 1.0, "judge_verdict": "correct", "judge_reason": "The response matches the expected answer."}, {"prompt": "What does HTTP stand for?", "expected": "HyperText Transfer Protocol", "response": "Hypertext Transfer Protocol", "latency_s": 0.16, "exact_match": true, "contains": true, "token_f1": 1.0, "judge_verdict": "correct", "judge_reason": "The model response matches the expected answer, only omitting the 'HyperText' part."}, {"prompt": "What is 15 * 17?", "expected": "255", "response": "255", "latency_s": 0.135, "exact_match": true, "contains": true, "token_f1": 1.0, "judge_verdict": "correct", "judge_reason": "The model's response matches the expected answer."}, {"prompt": "Name the process by which plants convert sunlight into energy.", "expected": "Photosynthesis", "response": "Photosynthesis", "latency_s": 0.136, "exact_match": true, "contains": true, "token_f1": 1.0, "judge_verdict": "correct", "judge_reason": "The model's response matches the expected answer."}]}, "5": {"model": "ministral-3:3b", "dataset": "datasets/sample_qa.jsonl", "items": [{"prompt": "What is the capital of France?", "expected": "Paris", "response": "Paris.", "latency_s": 2.15, "exact_match": true, "contains": true, "token_f1": 1.0, "judge_verdict": "correct", "judge_reason": "The response contains the right answer."}, {"prompt": "What language is primarily used for iOS development?", "expected": "Swift", "response": "Swift.", "latency_s": 0.128, "exact_match": true, "contains": true, "token_f1": 1.0, "judge_verdict": "correct", "judge_reason": "The response contains the right answer."}, {"prompt": "What does HTTP stand for?", "expected": "HyperText Transfer Protocol", "response": "**HTTP** stands for **HyperText Transfer Protocol**.", "latency_s": 0.182, "exact_match": false, "contains": true, "token_f1": 0.6666666666666666, "judge_verdict": "correct", "judge_reason": "The response accurately defines HTTP."}, {"prompt": "What is 15 * 17?", "expected": "255", "response": "**255**", "latency_s": 0.135, "exact_match": true, "contains": true, "token_f1": 1.0, "judge_verdict": "correct", "judge_reason": "The model's response matches the expected answer."}, {"prompt": "Name the process by which plants convert sunlight into energy.", "expected": "Photosynthesis", "response": "**Photosynthesis**.", "latency_s": 0.132, "exact_match": true, "contains": true, "token_f1": 1.0, "judge_verdict": "correct", "judge_reason": "The response contains the right answer."}]}, "6": {"model": "cogito:latest", "dataset": "datasets/sample_qa.jsonl", "items": [{"prompt": "What is the capital of France?", "expected": "Paris", "response": "Paris", "latency_s": 2.025, "exact_match": true, "contains": true, "token_f1": 1.0, "judge_verdict": "correct", "judge_reason": "The response contains the right answer."}, {"prompt": "What language is primarily used for iOS development?", "expected": "Swift", "response": "Swift", "latency_s": 1.476, "exact_match": true, "contains": true, "token_f1": 1.0, "judge_verdict": "correct", "judge_reason": "The response matches the expected answer."}, {"prompt": "What does HTTP stand for?", "expected": "HyperText Transfer Protocol", "response": "HyperText Transfer Protocol", "latency_s": 1.49, "exact_match": true, "contains": true, "token_f1": 1.0, "judge_verdict": "correct", "judge_reason": "The response matches the expected answer exactly."}, {"prompt": "What is 15 * 17?", "expected": "255", "response": "255", "latency_s": 1.489, "exact_match": true, "contains": true, "token_f1": 1.0, "judge_verdict": "correct", "judge_reason": "The model's response matches the expected answer."}, {"prompt": "Name the process by which plants convert sunlight into energy.", "expected": "Photosynthesis", "response": "Photosynthesis", "latency_s": 1.512, "exact_match": true, "contains": true, "token_f1": 1.0, "judge_verdict": "correct", "judge_reason": "The response contains the right answer."}]}, "7": {"model": "qwen2.5:7b", "dataset": "datasets/sample_qa.jsonl", "items": [{"prompt": "What is the capital of France?", "expected": "Paris", "response": "Paris", "latency_s": 0.133, "exact_match": true, "contains": true, "token_f1": 1.0, "judge_verdict": "correct", "judge_reason": "The response contains the right answer."}, {"prompt": "What language is primarily used for iOS development?", "expected": "Swift", "response": "Swift", "latency_s": 0.099, "exact_match": true, "contains": true, "token_f1": 1.0, "judge_verdict": "correct", "judge_reason": "The response matches the expected answer."}, {"prompt": "What does HTTP stand for?", "expected": "HyperText Transfer Protocol", "response": "HyperText Transfer Protocol", "latency_s": 0.11, "exact_match": true, "contains": true, "token_f1": 1.0, "judge_verdict": "correct", "judge_reason": "The response matches the expected answer exactly."}, {"prompt": "What is 15 * 17?", "expected": "255", "response": "255", "latency_s": 0.103, "exact_match": true, "contains": true, "token_f1": 1.0, "judge_verdict": "correct", "judge_reason": "The model's response matches the expected answer."}, {"prompt": "Name the process by which plants convert sunlight into energy.", "expected": "Photosynthesis", "response": "Photosynthesis", "latency_s": 0.106, "exact_match": true, "contains": true, "token_f1": 1.0, "judge_verdict": "correct", "judge_reason": "The model's response matches the expected answer."}]}, "8": {"model": "qwen3:0.6b", "dataset": "datasets/sample_qa.jsonl", "items": [{"prompt": "What is the capital of France?", "expected": "Paris", "response": "The capital of France is Paris.", "latency_s": 1.434, "exact_match": false, "contains": true, "token_f1": 0.33333333333333337, "judge_verdict": "correct", "judge_reason": "The response contains the right answer."}, {"prompt": "What language is primarily used for iOS development?", "expected": "Swift", "response": "Swift.", "latency_s": 1.487, "exact_match": true, "contains": true, "token_f1": 1.0, "judge_verdict": "correct", "judge_reason": "The response contains the right answer."}, {"prompt": "What does HTTP stand for?", "expected": "HyperText Transfer Protocol", "response": "HTTP stands for Hypertext Transfer Protocol.", "latency_s": 1.404, "exact_match": false, "contains": true, "token_f1": 0.6666666666666666, "judge_verdict": "correct", "judge_reason": "The response contains the right answer, even if the wording is slightly different."}, {"prompt": "What is 15 * 17?", "expected": "255", "response": "", "latency_s": 1.805, "exact_match": false, "contains": false, "token_f1": 0.0, "judge_verdict": "correct", "judge_reason": "The model provided the correct answer of 255."}, {"prompt": "Name the process by which plants convert sunlight into energy.", "expected": "Photosynthesis", "response": "Photosynthesis.", "latency_s": 1.497, "exact_match": true, "contains": true, "token_f1": 1.0, "judge_verdict": "correct", "judge_reason": "The response contains the right answer."}]}};
-const ALL_RUNS = [{"id": 1, "model": "qwen2.5:3b", "accuracy": 0.8, "contains_rate": 0.8, "avg_token_f1": 0.9142857142857143, "avg_latency_ms": 317.1775107999565, "judge_correct_rate": 1.0}, {"id": 2, "model": "qwen2.5:0.5b", "accuracy": 0.0, "contains_rate": 1.0, "avg_token_f1": 0.4833333333333333, "avg_latency_ms": 292.5572153966641, "judge_correct_rate": 1.0}, {"id": 3, "model": "gemma2:2b-instruct-q5_K_M", "accuracy": 1.0, "contains_rate": 1.0, "avg_token_f1": 1.0, "avg_latency_ms": 1416.2082178052515, "judge_correct_rate": 1.0}, {"id": 4, "model": "phi4-mini:latest", "accuracy": 1.0, "contains_rate": 1.0, "avg_token_f1": 1.0, "avg_latency_ms": 448.5213182022562, "judge_correct_rate": 1.0}, {"id": 5, "model": "ministral-3:3b", "accuracy": 0.8, "contains_rate": 1.0, "avg_token_f1": 0.9333333333333332, "avg_latency_ms": 545.3192501998274, "judge_correct_rate": 1.0}, {"id": 6, "model": "cogito:latest", "accuracy": 1.0, "contains_rate": 1.0, "avg_token_f1": 1.0, "avg_latency_ms": 1598.5993564041564, "judge_correct_rate": 1.0}, {"id": 7, "model": "qwen2.5:7b", "accuracy": 1.0, "contains_rate": 1.0, "avg_token_f1": 1.0, "avg_latency_ms": 110.08038599684369, "judge_correct_rate": 1.0}, {"id": 8, "model": "qwen3:0.6b", "accuracy": 0.4, "contains_rate": 0.8, "avg_token_f1": 0.6, "avg_latency_ms": 1525.6014107988449, "judge_correct_rate": 1.0}];
-const COLORS = ["#58a6ff", "#3fb950", "#e3b341", "#f85149", "#bc8cff", "#39d2c0", "#f778ba", "#79c0ff"];
+const D = {"models": ["qwen2.5:3b", "qwen2.5:0.5b", "gemma2:2b-instruct-q5_K_M", "phi4-mini:latest", "ministral-3:3b", "cogito:latest", "qwen2.5:7b", "qwen3:0.6b"], "metricLabels": ["Exact Match", "Contains", "Token F1", "Judge Correct"], "heatmapData": [[0, 0, 0.8], [0, 1, 0], [0, 2, 1.0], [0, 3, 1.0], [0, 4, 0.8], [0, 5, 1.0], [0, 6, 1.0], [0, 7, 0.4], [1, 0, 0.8], [1, 1, 1.0], [1, 2, 1.0], [1, 3, 1.0], [1, 4, 1.0], [1, 5, 1.0], [1, 6, 1.0], [1, 7, 0.8], [2, 0, 0.914], [2, 1, 0.483], [2, 2, 1.0], [2, 3, 1.0], [2, 4, 0.933], [2, 5, 1.0], [2, 6, 1.0], [2, 7, 0.6], [3, 0, 1.0], [3, 1, 1.0], [3, 2, 1.0], [3, 3, 1.0], [3, 4, 1.0], [3, 5, 1.0], [3, 6, 1.0], [3, 7, 1.0]], "barSeries": [{"name": "Exact Match", "type": "bar", "data": [80.0, 0, 100.0, 100.0, 80.0, 100.0, 100.0, 40.0], "itemStyle": {"borderRadius": [4, 4, 0, 0]}}, {"name": "Contains", "type": "bar", "data": [80.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 80.0], "itemStyle": {"borderRadius": [4, 4, 0, 0]}}, {"name": "Token F1", "type": "bar", "data": [91.4, 48.3, 100.0, 100.0, 93.3, 100.0, 100.0, 60.0], "itemStyle": {"borderRadius": [4, 4, 0, 0]}}, {"name": "Judge Correct", "type": "bar", "data": [100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0], "itemStyle": {"borderRadius": [4, 4, 0, 0]}}], "avgLatencies": [317.2, 292.6, 1416.2, 448.5, 545.3, 1598.6, 110.1, 1525.6], "p95Latencies": [1137.6, 988.8, 4503.3, 1674.9, 2149.7, 2025.3, 133.1, 1805.5], "latencyError": [[0, 820.4], [0, 696.2], [0, 3087.1], [0, 1226.4], [0, 1604.4], [0, 426.7], [0, 23.0], [0, 279.9]], "scatterData": [{"value": [317.2, 80.0], "name": "qwen2.5:3b"}, {"value": [292.6, 0], "name": "qwen2.5:0.5b"}, {"value": [1416.2, 100.0], "name": "gemma2:2b-instruct-q5_K_M"}, {"value": [448.5, 100.0], "name": "phi4-mini:latest"}, {"value": [545.3, 80.0], "name": "ministral-3:3b"}, {"value": [1598.6, 100.0], "name": "cogito:latest"}, {"value": [110.1, 100.0], "name": "qwen2.5:7b"}, {"value": [1525.6, 40.0], "name": "qwen3:0.6b"}], "details": {"1": {"model": "qwen2.5:3b", "dataset": "datasets/sample_qa.jsonl", "items": [{"prompt": "What is the capital of France?", "expected": "Paris", "response": "Paris", "latency_s": 1.138, "exact_match": true, "contains": true, "token_f1": 1.0, "judge_verdict": "correct", "judge_reason": "The response contains the right answer."}, {"prompt": "What language is primarily used for iOS development?", "expected": "Swift", "response": "Swift", "latency_s": 0.102, "exact_match": true, "contains": true, "token_f1": 1.0, "judge_verdict": "correct", "judge_reason": "The response matches the expected answer."}, {"prompt": "What does HTTP stand for?", "expected": "HyperText Transfer Protocol", "response": "Hyper Text Transfer Protocol", "latency_s": 0.121, "exact_match": false, "contains": false, "token_f1": 0.5714285714285715, "judge_verdict": "correct", "judge_reason": "The response matches the expected answer exactly."}, {"prompt": "What is 15 * 17?", "expected": "255", "response": "255", "latency_s": 0.116, "exact_match": true, "contains": true, "token_f1": 1.0, "judge_verdict": "correct", "judge_reason": "The model's response matches the expected answer."}, {"prompt": "Name the process by which plants convert sunlight into energy.", "expected": "Photosynthesis", "response": "Photosynthesis", "latency_s": 0.109, "exact_match": true, "contains": true, "token_f1": 1.0, "judge_verdict": "correct", "judge_reason": "The model's response matches the expected answer."}]}, "2": {"model": "qwen2.5:0.5b", "dataset": "datasets/sample_qa.jsonl", "items": [{"prompt": "What is the capital of France?", "expected": "Paris", "response": "The capital of France is Paris.", "latency_s": 0.989, "exact_match": false, "contains": true, "token_f1": 0.33333333333333337, "judge_verdict": "correct", "judge_reason": "The response contains the right answer."}, {"prompt": "What language is primarily used for iOS development?", "expected": "Swift", "response": "Swift is primarily used for iOS development.", "latency_s": 0.13, "exact_match": false, "contains": true, "token_f1": 0.25, "judge_verdict": "correct", "judge_reason": "The response accurately states that Swift is primarily used for iOS development."}, {"prompt": "What does HTTP stand for?", "expected": "HyperText Transfer Protocol", "response": "HTTP stands for Hypertext Transfer Protocol.", "latency_s": 0.109, "exact_match": false, "contains": true, "token_f1": 0.6666666666666666, "judge_verdict": "correct", "judge_reason": "The response contains the right answer, even if the wording is slightly different."}, {"prompt": "What is 15 * 17?", "expected": "255", "response": "15 * 17 = 255", "latency_s": 0.12, "exact_match": false, "contains": true, "token_f1": 0.5, "judge_verdict": "correct", "judge_reason": "The response correctly states the answer."}, {"prompt": "Name the process by which plants convert sunlight into energy.", "expected": "Photosynthesis", "response": "Photosynthesis process.", "latency_s": 0.115, "exact_match": false, "contains": true, "token_f1": 0.6666666666666666, "judge_verdict": "correct", "judge_reason": "The response contains the correct answer 'Photosynthesis process'."}]}, "3": {"model": "gemma2:2b-instruct-q5_K_M", "dataset": "datasets/sample_qa.jsonl", "items": [{"prompt": "What is the capital of France?", "expected": "Paris", "response": "Paris", "latency_s": 4.503, "exact_match": true, "contains": true, "token_f1": 1.0, "judge_verdict": "correct", "judge_reason": "The response contains the right answer."}, {"prompt": "What language is primarily used for iOS development?", "expected": "Swift", "response": "Swift", "latency_s": 2.19, "exact_match": true, "contains": true, "token_f1": 1.0, "judge_verdict": "correct", "judge_reason": "The response matches the expected answer."}, {"prompt": "What does HTTP stand for?", "expected": "HyperText Transfer Protocol", "response": "Hypertext Transfer Protocol", "latency_s": 0.133, "exact_match": true, "contains": true, "token_f1": 1.0, "judge_verdict": "correct", "judge_reason": "The model response matches the expected answer, just with a minor difference in spacing."}, {"prompt": "What is 15 * 17?", "expected": "255", "response": "255", "latency_s": 0.13, "exact_match": true, "contains": true, "token_f1": 1.0, "judge_verdict": "correct", "judge_reason": "The model's response matches the expected answer."}, {"prompt": "Name the process by which plants convert sunlight into energy.", "expected": "Photosynthesis", "response": "Photosynthesis", "latency_s": 0.124, "exact_match": true, "contains": true, "token_f1": 1.0, "judge_verdict": "correct", "judge_reason": "The model's response matches the expected answer."}]}, "4": {"model": "phi4-mini:latest", "dataset": "datasets/sample_qa.jsonl", "items": [{"prompt": "What is the capital of France?", "expected": "Paris", "response": "Paris", "latency_s": 1.675, "exact_match": true, "contains": true, "token_f1": 1.0, "judge_verdict": "correct", "judge_reason": "The response contains the right answer."}, {"prompt": "What language is primarily used for iOS development?", "expected": "Swift", "response": "Swift", "latency_s": 0.137, "exact_match": true, "contains": true, "token_f1": 1.0, "judge_verdict": "correct", "judge_reason": "The response matches the expected answer."}, {"prompt": "What does HTTP stand for?", "expected": "HyperText Transfer Protocol", "response": "Hypertext Transfer Protocol", "latency_s": 0.16, "exact_match": true, "contains": true, "token_f1": 1.0, "judge_verdict": "correct", "judge_reason": "The model response matches the expected answer, only omitting the 'HyperText' part."}, {"prompt": "What is 15 * 17?", "expected": "255", "response": "255", "latency_s": 0.135, "exact_match": true, "contains": true, "token_f1": 1.0, "judge_verdict": "correct", "judge_reason": "The model's response matches the expected answer."}, {"prompt": "Name the process by which plants convert sunlight into energy.", "expected": "Photosynthesis", "response": "Photosynthesis", "latency_s": 0.136, "exact_match": true, "contains": true, "token_f1": 1.0, "judge_verdict": "correct", "judge_reason": "The model's response matches the expected answer."}]}, "5": {"model": "ministral-3:3b", "dataset": "datasets/sample_qa.jsonl", "items": [{"prompt": "What is the capital of France?", "expected": "Paris", "response": "Paris.", "latency_s": 2.15, "exact_match": true, "contains": true, "token_f1": 1.0, "judge_verdict": "correct", "judge_reason": "The response contains the right answer."}, {"prompt": "What language is primarily used for iOS development?", "expected": "Swift", "response": "Swift.", "latency_s": 0.128, "exact_match": true, "contains": true, "token_f1": 1.0, "judge_verdict": "correct", "judge_reason": "The response contains the right answer."}, {"prompt": "What does HTTP stand for?", "expected": "HyperText Transfer Protocol", "response": "**HTTP** stands for **HyperText Transfer Protocol**.", "latency_s": 0.182, "exact_match": false, "contains": true, "token_f1": 0.6666666666666666, "judge_verdict": "correct", "judge_reason": "The response accurately defines HTTP."}, {"prompt": "What is 15 * 17?", "expected": "255", "response": "**255**", "latency_s": 0.135, "exact_match": true, "contains": true, "token_f1": 1.0, "judge_verdict": "correct", "judge_reason": "The model's response matches the expected answer."}, {"prompt": "Name the process by which plants convert sunlight into energy.", "expected": "Photosynthesis", "response": "**Photosynthesis**.", "latency_s": 0.132, "exact_match": true, "contains": true, "token_f1": 1.0, "judge_verdict": "correct", "judge_reason": "The response contains the right answer."}]}, "6": {"model": "cogito:latest", "dataset": "datasets/sample_qa.jsonl", "items": [{"prompt": "What is the capital of France?", "expected": "Paris", "response": "Paris", "latency_s": 2.025, "exact_match": true, "contains": true, "token_f1": 1.0, "judge_verdict": "correct", "judge_reason": "The response contains the right answer."}, {"prompt": "What language is primarily used for iOS development?", "expected": "Swift", "response": "Swift", "latency_s": 1.476, "exact_match": true, "contains": true, "token_f1": 1.0, "judge_verdict": "correct", "judge_reason": "The response matches the expected answer."}, {"prompt": "What does HTTP stand for?", "expected": "HyperText Transfer Protocol", "response": "HyperText Transfer Protocol", "latency_s": 1.49, "exact_match": true, "contains": true, "token_f1": 1.0, "judge_verdict": "correct", "judge_reason": "The response matches the expected answer exactly."}, {"prompt": "What is 15 * 17?", "expected": "255", "response": "255", "latency_s": 1.489, "exact_match": true, "contains": true, "token_f1": 1.0, "judge_verdict": "correct", "judge_reason": "The model's response matches the expected answer."}, {"prompt": "Name the process by which plants convert sunlight into energy.", "expected": "Photosynthesis", "response": "Photosynthesis", "latency_s": 1.512, "exact_match": true, "contains": true, "token_f1": 1.0, "judge_verdict": "correct", "judge_reason": "The response contains the right answer."}]}, "7": {"model": "qwen2.5:7b", "dataset": "datasets/sample_qa.jsonl", "items": [{"prompt": "What is the capital of France?", "expected": "Paris", "response": "Paris", "latency_s": 0.133, "exact_match": true, "contains": true, "token_f1": 1.0, "judge_verdict": "correct", "judge_reason": "The response contains the right answer."}, {"prompt": "What language is primarily used for iOS development?", "expected": "Swift", "response": "Swift", "latency_s": 0.099, "exact_match": true, "contains": true, "token_f1": 1.0, "judge_verdict": "correct", "judge_reason": "The response matches the expected answer."}, {"prompt": "What does HTTP stand for?", "expected": "HyperText Transfer Protocol", "response": "HyperText Transfer Protocol", "latency_s": 0.11, "exact_match": true, "contains": true, "token_f1": 1.0, "judge_verdict": "correct", "judge_reason": "The response matches the expected answer exactly."}, {"prompt": "What is 15 * 17?", "expected": "255", "response": "255", "latency_s": 0.103, "exact_match": true, "contains": true, "token_f1": 1.0, "judge_verdict": "correct", "judge_reason": "The model's response matches the expected answer."}, {"prompt": "Name the process by which plants convert sunlight into energy.", "expected": "Photosynthesis", "response": "Photosynthesis", "latency_s": 0.106, "exact_match": true, "contains": true, "token_f1": 1.0, "judge_verdict": "correct", "judge_reason": "The model's response matches the expected answer."}]}, "8": {"model": "qwen3:0.6b", "dataset": "datasets/sample_qa.jsonl", "items": [{"prompt": "What is the capital of France?", "expected": "Paris", "response": "The capital of France is Paris.", "latency_s": 1.434, "exact_match": false, "contains": true, "token_f1": 0.33333333333333337, "judge_verdict": "correct", "judge_reason": "The response contains the right answer."}, {"prompt": "What language is primarily used for iOS development?", "expected": "Swift", "response": "Swift.", "latency_s": 1.487, "exact_match": true, "contains": true, "token_f1": 1.0, "judge_verdict": "correct", "judge_reason": "The response contains the right answer."}, {"prompt": "What does HTTP stand for?", "expected": "HyperText Transfer Protocol", "response": "HTTP stands for Hypertext Transfer Protocol.", "latency_s": 1.404, "exact_match": false, "contains": true, "token_f1": 0.6666666666666666, "judge_verdict": "correct", "judge_reason": "The response contains the right answer, even if the wording is slightly different."}, {"prompt": "What is 15 * 17?", "expected": "255", "response": "", "latency_s": 1.805, "exact_match": false, "contains": false, "token_f1": 0.0, "judge_verdict": "correct", "judge_reason": "The model provided the correct answer of 255."}, {"prompt": "Name the process by which plants convert sunlight into energy.", "expected": "Photosynthesis", "response": "Photosynthesis.", "latency_s": 1.497, "exact_match": true, "contains": true, "token_f1": 1.0, "judge_verdict": "correct", "judge_reason": "The response contains the right answer."}]}}, "runIds": [1, 2, 3, 4, 5, 6, 7, 8], "createdAt": ["2026-04-13T19:09:55", "2026-04-13T19:10:36", "2026-04-13T19:41:02", "2026-04-13T19:41:35", "2026-04-13T19:41:45", "2026-04-13T19:42:05", "2026-04-13T19:42:12", "2026-04-13T19:42:33"], "hasJudge": true};
+const COLORS = ["#58a6ff", "#3fb950", "#d29922", "#f85149", "#bc8cff", "#39d2c0", "#f778ba"];
 
-// ── Sortable Table ──
-let sortState = { col: null, asc: true };
-function sortTable(th) {
-  const col = parseInt(th.dataset.col);
-  const type = th.dataset.type;
-  const tbody = document.querySelector('#results-table tbody');
-  const rows = Array.from(tbody.querySelectorAll('tr'));
+// -- ECharts dark theme base --
+const THEME = {
+  backgroundColor: 'transparent',
+  textStyle: { color: '#e6edf3' },
+  legend: { textStyle: { color: '#8b949e' } },
+  categoryAxis: {
+    axisLine: { lineStyle: { color: '#30363d' } },
+    axisLabel: { color: '#8b949e' },
+    splitLine: { lineStyle: { color: '#30363d', type: 'dashed' } },
+  },
+  valueAxis: {
+    axisLine: { lineStyle: { color: '#30363d' } },
+    axisLabel: { color: '#8b949e' },
+    splitLine: { lineStyle: { color: '#30363d', type: 'dashed' } },
+  },
+};
 
-  if (sortState.col === col) { sortState.asc = !sortState.asc; }
-  else { sortState.col = col; sortState.asc = type === 'str'; }
-
-  document.querySelectorAll('#results-table th').forEach(h => h.classList.remove('sorted'));
-  th.classList.add('sorted');
-  th.querySelector('.sort-arrow').textContent = sortState.asc ? '▲' : '▼';
-
-  rows.sort((a, b) => {
-    let av = a.cells[col].textContent.trim();
-    let bv = b.cells[col].textContent.trim();
-    if (type === 'num') {
-      av = parseFloat(av) || 0;
-      bv = parseFloat(bv) || 0;
-    }
-    let cmp = av < bv ? -1 : av > bv ? 1 : 0;
-    return sortState.asc ? cmp : -cmp;
-  });
-
-  rows.forEach(r => tbody.appendChild(r));
+function initChart(id) {
+  const el = document.getElementById(id);
+  const chart = echarts.init(el, null, { renderer: 'canvas' });
+  window.addEventListener('resize', () => chart.resize());
+  return chart;
 }
 
-// ── Radar Filter ──
-function updateRadar() {
-  const checked = Array.from(document.querySelectorAll('.model-check input:checked'))
-    .map(cb => parseInt(cb.value));
-  const filtered = ALL_RUNS.filter(r => checked.includes(r.id));
-  if (filtered.length === 0) return;
-
-  // Rebuild radar SVG client-side
-  const container = document.getElementById('radar-container');
-  const W = 500, H = 500;
-  const cx = W/2, cy = H/2 + 10, R = W/2 - 70;
-
-  const metrics = ['accuracy', 'contains_rate', 'avg_token_f1'];
-  const labels = ['Exact Match', 'Contains', 'Token F1'];
-  if (filtered.some(r => r.judge_correct_rate != null)) {
-    metrics.push('judge_correct_rate'); labels.push('Judge');
-  }
-  const maxLat = Math.max(...filtered.map(r => r.avg_latency_ms)) * 1.5;
-  metrics.push('_speed'); labels.push('Speed');
-
-  const n = metrics.length;
-  const angles = Array.from({length: n}, (_, i) => -Math.PI/2 + i * 2 * Math.PI / n);
-  const polar = (a, r) => [cx + r * Math.cos(a), cy + r * Math.sin(a)];
-
-  let svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">`;
-  svg += `<rect width="${W}" height="${H}" rx="8" fill="#0d1117"/>`;
-  svg += `<text x="${W/2}" y="28" text-anchor="middle" fill="#e6edf3" font-size="16" font-weight="600">Model Profile</text>`;
-
-  // Grid
-  [0.25, 0.5, 0.75, 1.0].forEach(ring => {
-    const pts = angles.map(a => polar(a, R*ring).join(',')).join(' ');
-    svg += `<polygon points="${pts}" fill="none" stroke="#30363d" stroke-width="1"/>`;
+// -- Heatmap --
+(function() {
+  const chart = initChart('chart-heatmap');
+  const maxVal = Math.max(...D.heatmapData.map(d => d[2]), 0.01);
+  chart.setOption({
+    ...THEME,
+    title: { text: 'Metric Heatmap', left: 'center', top: 10,
+             textStyle: { color: '#e6edf3', fontSize: 16, fontWeight: 600 } },
+    tooltip: {
+      formatter: function(p) {
+        const metric = D.metricLabels[p.data[0]];
+        const model = D.models[p.data[1]];
+        return '<b>' + model + '</b><br/>' + metric + ': ' + (p.data[2] * 100).toFixed(1) + '%';
+      }
+    },
+    grid: { top: 50, bottom: 60, left: 160, right: 40 },
+    xAxis: {
+      type: 'category', data: D.metricLabels, position: 'bottom',
+      axisLabel: { color: '#8b949e', fontSize: 12 },
+      axisLine: { lineStyle: { color: '#30363d' } },
+    },
+    yAxis: {
+      type: 'category', data: D.models,
+      axisLabel: { color: '#e6edf3', fontSize: 12 },
+      axisLine: { lineStyle: { color: '#30363d' } },
+    },
+    visualMap: {
+      min: 0, max: 1, calculable: false, orient: 'horizontal',
+      left: 'center', bottom: 5,
+      inRange: { color: ['#0d1117', '#58a6ff', '#3fb950'] },
+      textStyle: { color: '#8b949e' },
+      formatter: function(v) { return (v * 100).toFixed(0) + '%'; },
+    },
+    series: [{
+      type: 'heatmap', data: D.heatmapData,
+      label: {
+        show: true,
+        formatter: function(p) { return (p.data[2] * 100).toFixed(1) + '%'; },
+        color: '#e6edf3', fontSize: 12, fontWeight: 600,
+      },
+      itemStyle: { borderRadius: 4, borderColor: '#161b22', borderWidth: 3 },
+      emphasis: { itemStyle: { shadowBlur: 10, shadowColor: 'rgba(88,166,255,0.4)' } },
+    }],
+    animationDuration: 800,
+    animationEasing: 'cubicOut',
   });
+})();
 
-  // Axes
-  angles.forEach((a, i) => {
-    const [px,py] = polar(a, R);
-    const [lx,ly] = polar(a, R+30);
-    svg += `<line x1="${cx}" y1="${cy}" x2="${px}" y2="${py}" stroke="#30363d" stroke-width="1"/>`;
-    const anchor = lx < cx-10 ? 'end' : lx > cx+10 ? 'start' : 'middle';
-    svg += `<text x="${lx}" y="${ly+4}" text-anchor="${anchor}" fill="#e6edf3" font-size="12" font-weight="500">${labels[i]}</text>`;
+// -- Scatter: Latency vs Accuracy --
+(function() {
+  const chart = initChart('chart-scatter');
+  chart.setOption({
+    ...THEME,
+    title: { text: 'Latency vs Accuracy', left: 'center', top: 10,
+             textStyle: { color: '#e6edf3', fontSize: 16, fontWeight: 600 } },
+    tooltip: {
+      formatter: function(p) {
+        return '<b>' + p.data.name + '</b><br/>'
+          + 'Latency: ' + p.data.value[0] + 'ms<br/>'
+          + 'Accuracy: ' + p.data.value[1] + '%';
+      }
+    },
+    grid: { top: 50, bottom: 50, left: 70, right: 40 },
+    xAxis: {
+      name: 'Avg Latency (ms)', nameLocation: 'center', nameGap: 30,
+      nameTextStyle: { color: '#8b949e' },
+      type: 'value',
+      axisLabel: { color: '#8b949e' },
+      axisLine: { lineStyle: { color: '#30363d' } },
+      splitLine: { lineStyle: { color: '#30363d', type: 'dashed' } },
+    },
+    yAxis: {
+      name: 'Exact Match (%)', nameLocation: 'center', nameGap: 45,
+      nameTextStyle: { color: '#8b949e' },
+      type: 'value', min: 0, max: 100,
+      axisLabel: { color: '#8b949e' },
+      axisLine: { lineStyle: { color: '#30363d' } },
+      splitLine: { lineStyle: { color: '#30363d', type: 'dashed' } },
+    },
+    series: [{
+      type: 'scatter', symbolSize: 18,
+      data: D.scatterData,
+      itemStyle: { color: '#58a6ff', borderColor: '#e6edf3', borderWidth: 1 },
+      emphasis: {
+        itemStyle: { shadowBlur: 15, shadowColor: 'rgba(88,166,255,0.5)' },
+        scale: 1.4,
+      },
+      label: {
+        show: true, position: 'top',
+        formatter: function(p) { return p.data.name; },
+        color: '#8b949e', fontSize: 11,
+      },
+    }],
+    animationDuration: 1000,
+    animationEasing: 'elasticOut',
   });
+})();
 
-  // Data
-  filtered.forEach((run, ri) => {
-    const color = COLORS[ALL_RUNS.findIndex(r => r.id === run.id) % COLORS.length];
-    const vals = metrics.map(k => k === '_speed' ? 1 - run.avg_latency_ms / maxLat : (run[k] || 0));
-    const pts = vals.map((v, i) => polar(angles[i], R*v).join(',')).join(' ');
-    svg += `<polygon points="${pts}" fill="${color}" fill-opacity="0.12" stroke="${color}" stroke-width="2"/>`;
-    vals.forEach((v, i) => {
-      const [dx,dy] = polar(angles[i], R*v);
-      svg += `<circle cx="${dx}" cy="${dy}" r="3.5" fill="${color}" stroke="#0d1117" stroke-width="1"/>`;
+// -- Grouped Bar Chart --
+(function() {
+  const chart = initChart('chart-bars');
+  const series = D.barSeries.map(function(s, i) {
+    s.itemStyle = s.itemStyle || {};
+    s.itemStyle.color = COLORS[i % COLORS.length];
+    s.emphasis = { itemStyle: { shadowBlur: 10, shadowColor: 'rgba(0,0,0,0.3)' } };
+    return s;
+  });
+  chart.setOption({
+    ...THEME,
+    title: { text: 'Model Comparison — Accuracy Metrics', left: 'center', top: 10,
+             textStyle: { color: '#e6edf3', fontSize: 16, fontWeight: 600 } },
+    tooltip: {
+      trigger: 'axis', axisPointer: { type: 'shadow' },
+      formatter: function(params) {
+        let html = '<b>' + params[0].axisValue + '</b><br/>';
+        params.forEach(function(p) {
+          html += '<span style="color:' + p.color + '">●</span> '
+            + p.seriesName + ': ' + p.data + '%<br/>';
+        });
+        return html;
+      }
+    },
+    legend: {
+      top: 38, textStyle: { color: '#8b949e' },
+    },
+    grid: { top: 80, bottom: 60, left: 50, right: 30 },
+    xAxis: {
+      type: 'category', data: D.models,
+      axisLabel: { color: '#8b949e', fontSize: 11, rotate: D.models.length > 5 ? 20 : 0 },
+      axisLine: { lineStyle: { color: '#30363d' } },
+    },
+    yAxis: {
+      type: 'value', max: 100,
+      axisLabel: { color: '#8b949e', formatter: '{value}%' },
+      axisLine: { lineStyle: { color: '#30363d' } },
+      splitLine: { lineStyle: { color: '#30363d', type: 'dashed' } },
+    },
+    series: series,
+    animationDuration: 800,
+    animationEasing: 'cubicOut',
+    animationDelay: function(idx) { return idx * 80; },
+  });
+})();
+
+// -- Latency Chart --
+(function() {
+  const chart = initChart('chart-latency');
+  chart.setOption({
+    ...THEME,
+    title: { text: 'Latency Comparison (avg + p95)', left: 'center', top: 10,
+             textStyle: { color: '#e6edf3', fontSize: 16, fontWeight: 600 } },
+    tooltip: {
+      trigger: 'axis', axisPointer: { type: 'shadow' },
+      formatter: function(params) {
+        const idx = params[0].dataIndex;
+        return '<b>' + D.models[idx] + '</b><br/>'
+          + 'Avg: ' + D.avgLatencies[idx] + 'ms<br/>'
+          + 'P95: ' + D.p95Latencies[idx] + 'ms';
+      }
+    },
+    legend: {
+      top: 38, textStyle: { color: '#8b949e' },
+    },
+    grid: { top: 80, bottom: 60, left: 70, right: 30 },
+    xAxis: {
+      type: 'category', data: D.models,
+      axisLabel: { color: '#8b949e', fontSize: 11, rotate: D.models.length > 5 ? 20 : 0 },
+      axisLine: { lineStyle: { color: '#30363d' } },
+    },
+    yAxis: {
+      type: 'value',
+      axisLabel: { color: '#8b949e', formatter: '{value}ms' },
+      axisLine: { lineStyle: { color: '#30363d' } },
+      splitLine: { lineStyle: { color: '#30363d', type: 'dashed' } },
+    },
+    series: [
+      {
+        name: 'Avg Latency',
+        type: 'bar',
+        data: D.avgLatencies,
+        itemStyle: {
+          borderRadius: [4, 4, 0, 0],
+          color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+            { offset: 0, color: '#58a6ff' },
+            { offset: 1, color: 'rgba(88,166,255,0.3)' },
+          ]),
+        },
+        emphasis: { itemStyle: { shadowBlur: 10, shadowColor: 'rgba(88,166,255,0.4)' } },
+        label: {
+          show: true, position: 'top',
+          formatter: function(p) { return p.value + 'ms'; },
+          color: '#8b949e', fontSize: 11,
+        },
+      },
+      {
+        name: 'P95 Latency',
+        type: 'bar',
+        data: D.p95Latencies,
+        itemStyle: {
+          borderRadius: [4, 4, 0, 0],
+          color: 'rgba(88,166,255,0.15)',
+          borderColor: '#58a6ff',
+          borderWidth: 1,
+          borderType: 'dashed',
+        },
+        barGap: '-100%',
+        z: -1,
+      },
+    ],
+    animationDuration: 800,
+    animationEasing: 'cubicOut',
+    animationDelay: function(idx) { return idx * 100; },
+  });
+})();
+
+// -- Table sorting --
+(function() {
+  const table = document.getElementById('runs-table');
+  const tbody = table.querySelector('tbody');
+  const headers = table.querySelectorAll('th');
+  let sortCol = null;
+  let sortAsc = true;
+
+  headers.forEach(function(th) {
+    th.addEventListener('click', function() {
+      const col = th.dataset.col;
+      if (sortCol === col) { sortAsc = !sortAsc; }
+      else { sortCol = col; sortAsc = true; }
+
+      headers.forEach(function(h) { h.querySelector('.sort-arrow').textContent = ''; });
+      th.querySelector('.sort-arrow').textContent = sortAsc ? '▲' : '▼';
+
+      const rows = Array.from(tbody.querySelectorAll('tr'));
+      rows.sort(function(a, b) {
+        const cellsA = a.querySelectorAll('td');
+        const cellsB = b.querySelectorAll('td');
+        let idx = Array.from(headers).indexOf(th);
+        let va = cellsA[idx].textContent.trim();
+        let vb = cellsB[idx].textContent.trim();
+
+        // Try numeric sort
+        const na = parseFloat(va);
+        const nb = parseFloat(vb);
+        if (!isNaN(na) && !isNaN(nb)) {
+          return sortAsc ? na - nb : nb - na;
+        }
+        return sortAsc ? va.localeCompare(vb) : vb.localeCompare(va);
+      });
+      rows.forEach(function(r) { tbody.appendChild(r); });
     });
   });
+})();
 
-  svg += '</svg>';
-  container.innerHTML = svg;
-}
-
-// ── Details Panel ──
+// -- Per-item details --
 function showDetails(runId) {
   const panel = document.getElementById('details-panel');
-  const run = DATA[runId];
+  const run = D.details[runId];
   if (!run || !run.items.length) {
     panel.innerHTML = '<p class="dim">No per-item details for this run.</p>';
     panel.classList.add('visible');
     return;
   }
 
-  document.querySelectorAll('tr.active').forEach(r => r.classList.remove('active'));
-  document.querySelector(`tr[data-run-id="${runId}"]`)?.classList.add('active');
+  document.querySelectorAll('tr.active').forEach(function(r) { r.classList.remove('active'); });
+  const row = document.querySelector('tr[data-run-id="' + runId + '"]');
+  if (row) row.classList.add('active');
 
-  let html = `<h3 style="margin-bottom:1rem">${run.model} — ${run.items.length} items</h3>`;
-  run.items.forEach((item, i) => {
+  let html = '<h3 style="margin-bottom:1rem">' + run.model + ' — ' + run.items.length + ' items</h3>';
+  run.items.forEach(function(item, i) {
     const judgeBadge = item.judge_verdict
-      ? `<span class="badge ${item.judge_verdict}">${item.judge_verdict}</span>
-         <span class="dim" style="font-size:12px">${item.judge_reason || ''}</span>`
+      ? '<span class="badge ' + item.judge_verdict + '">' + item.judge_verdict + '</span>'
+        + ' <span class="dim" style="font-size:12px">' + (item.judge_reason || '') + '</span>'
       : '';
+
     const f1Pct = ((item.token_f1 || 0) * 100).toFixed(0);
-    html += `
-      <div class="detail-item">
-        <div class="prompt">${i+1}. ${item.prompt}</div>
-        <div><strong>Expected:</strong> ${item.expected}</div>
-        <div class="response"><strong>Response:</strong> ${item.response}</div>
-        <div>
-          <span class="badge metric">exact: ${item.exact_match ? '✓' : '✗'}</span>
-          <span class="badge metric">contains: ${item.contains ? '✓' : '✗'}</span>
-          <span class="badge metric">F1: ${f1Pct}%</span>
-          <span class="badge metric">${(item.latency_s * 1000).toFixed(0)}ms</span>
-          ${judgeBadge}
-        </div>
-        <div class="f1-bar"><div class="f1-bar-fill" style="width:${f1Pct}%"></div></div>
-      </div>`;
+
+    html += '<div class="detail-item">'
+      + '<div class="prompt">' + (i+1) + '. ' + item.prompt + '</div>'
+      + '<div><strong>Expected:</strong> ' + item.expected + '</div>'
+      + '<div class="response"><strong>Response:</strong> ' + item.response + '</div>'
+      + '<div>'
+      + '<span class="badge metric">exact: ' + (item.exact_match ? '✓' : '✗') + '</span>'
+      + '<span class="badge metric">contains: ' + (item.contains ? '✓' : '✗') + '</span>'
+      + '<span class="badge metric">F1: ' + f1Pct + '%</span>'
+      + '<span class="badge metric">' + (item.latency_s * 1000).toFixed(0) + 'ms</span>'
+      + ' ' + judgeBadge
+      + '</div>'
+      + '<div class="f1-bar"><div class="f1-bar-fill" style="width:' + f1Pct + '%"></div></div>'
+      + '</div>';
   });
 
   panel.innerHTML = html;
