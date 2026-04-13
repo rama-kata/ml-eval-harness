@@ -1,18 +1,29 @@
-"""Generate SVG charts and an interactive HTML dashboard from eval results."""
+"""Generate an interactive ECharts HTML dashboard from eval results."""
+
+from __future__ import annotations
 
 import json
-import math
 import sqlite3
-import sys
 from pathlib import Path
+from textwrap import dedent
 
-# -- Color palette (dark theme, WCAG AA compliant on #0d1117) --
+
+# -- Dark theme tokens (GitHub-style) --
 BG = "#0d1117"
 BG_CARD = "#161b22"
 BORDER = "#30363d"
 TEXT = "#e6edf3"
 TEXT_DIM = "#8b949e"
-ACCENT_COLORS = ["#58a6ff", "#3fb950", "#e3b341", "#f85149", "#bc8cff", "#39d2c0", "#f778ba", "#79c0ff"]
+ACCENT = "#58a6ff"
+GREEN = "#3fb950"
+YELLOW = "#d29922"
+RED = "#f85149"
+PURPLE = "#bc8cff"
+CYAN = "#39d2c0"
+PINK = "#f778ba"
+ACCENT_COLORS = [ACCENT, GREEN, YELLOW, RED, PURPLE, CYAN, PINK]
+
+ECHARTS_CDN = "https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"
 
 
 def load_runs(db_path: str) -> list[dict]:
@@ -26,389 +37,130 @@ def load_runs(db_path: str) -> list[dict]:
     return [dict(r) for r in rows]
 
 
-def _tooltip(text: str) -> str:
-    """Wrap text in an SVG <title> element for native hover tooltip."""
-    escaped = text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-    return f"<title>{escaped}</title>"
+def _summary_cards(runs: list[dict]) -> str:
+    """Build HTML for the summary stat cards at the top."""
+    total = len(runs)
+    models = list({r["model"] for r in runs})
 
+    best_acc = max(runs, key=lambda r: r.get("accuracy") or 0)
+    fastest = min(runs, key=lambda r: r.get("avg_latency_ms") or float("inf"))
+    best_f1 = max(runs, key=lambda r: r.get("avg_token_f1") or 0)
 
-# ── SVG Generation (for README) ──────────────────────────────────────────────
-
-
-def _svg_bar_chart(runs: list[dict], width: int = 800, height: int = 500) -> str:
-    """Horizontal grouped bar chart comparing models across metrics."""
-    metrics = [
-        ("accuracy", "Exact Match"),
-        ("contains_rate", "Contains"),
-        ("avg_token_f1", "Token F1"),
+    cards = [
+        ("Total Runs", str(total), f"{len(models)} model{'s' if len(models) != 1 else ''}"),
+        ("Best Exact Match", f"{(best_acc['accuracy'] or 0):.1%}", best_acc["model"]),
+        ("Best Token F1", f"{(best_f1['avg_token_f1'] or 0):.3f}", best_f1["model"]),
+        ("Fastest", f"{(fastest['avg_latency_ms'] or 0):.0f}ms", fastest["model"]),
     ]
-    if any(r.get("judge_correct_rate") is not None for r in runs):
-        metrics.append(("judge_correct_rate", "Judge Correct"))
 
-    n_models = len(runs)
-    n_metrics = len(metrics)
-    margin = {"top": 60, "right": 30, "bottom": 80, "left": 160}
-    chart_w = width - margin["left"] - margin["right"]
-    chart_h = height - margin["top"] - margin["bottom"]
+    html = '<div class="summary-cards">\n'
+    for label, value, sub in cards:
+        html += dedent(f"""\
+            <div class="card">
+                <div class="card-label">{label}</div>
+                <div class="card-value">{value}</div>
+                <div class="card-sub">{sub}</div>
+            </div>\n""")
+    html += "</div>\n"
+    return html
 
-    group_h = chart_h / n_metrics
-    bar_h = min(group_h / (n_models + 1) * 0.8, 28)
-    group_padding = (group_h - bar_h * n_models) / 2
 
-    bars_svg = []
-    labels_svg = []
-    gridlines = []
+def _chart_data(runs: list[dict]) -> dict:
+    """Prepare all chart data as a single JSON-serializable dict."""
+    models = [r["model"] for r in runs]
+    has_judge = any(r.get("judge_correct_rate") is not None for r in runs)
 
-    # Grid lines
-    for tick in [0, 0.25, 0.5, 0.75, 1.0]:
-        x = margin["left"] + tick * chart_w
-        gridlines.append(
-            f'<line x1="{x}" y1="{margin["top"]}" x2="{x}" '
-            f'y2="{height - margin["bottom"]}" stroke="{BORDER}" stroke-width="1"/>'
-        )
-        labels_svg.append(
-            f'<text x="{x}" y="{height - margin["bottom"] + 20}" '
-            f'text-anchor="middle" fill="{TEXT_DIM}" font-size="12">{tick:.0%}</text>'
-        )
+    # Metrics for heatmap and bar chart
+    metric_keys = ["accuracy", "contains_rate", "avg_token_f1"]
+    metric_labels = ["Exact Match", "Contains", "Token F1"]
+    if has_judge:
+        metric_keys.append("judge_correct_rate")
+        metric_labels.append("Judge Correct")
 
-    for mi, (key, label) in enumerate(metrics):
-        group_y = margin["top"] + mi * group_h
-        labels_svg.append(
-            f'<text x="{margin["left"] - 10}" y="{group_y + group_h / 2 + 5}" '
-            f'text-anchor="end" fill="{TEXT}" font-size="13" font-weight="500">{label}</text>'
-        )
-
+    # Heatmap: [col_index, row_index, value]
+    heatmap_data = []
+    for mi, key in enumerate(metric_keys):
         for ri, run in enumerate(runs):
             val = run.get(key) or 0
-            color = ACCENT_COLORS[ri % len(ACCENT_COLORS)]
-            y = group_y + group_padding + ri * bar_h
-            w = val * chart_w
+            heatmap_data.append([mi, ri, round(val, 3)])
 
-            bars_svg.append(
-                f'<g class="bar-group" style="cursor:pointer">'
-                f'{_tooltip(f"{run["model"]}: {val:.1%}")}'
-                f'<rect x="{margin["left"]}" y="{y}" width="{w}" height="{bar_h * 0.85}" '
-                f'rx="3" fill="{color}" opacity="0.85">'
-                f'<animate attributeName="width" from="0" to="{w}" dur="0.6s" fill="freeze"/>'
-                f'</rect>'
-                f'</g>'
-            )
-            if val > 0.08:
-                bars_svg.append(
-                    f'<text x="{margin["left"] + w - 8}" y="{y + bar_h * 0.55}" '
-                    f'text-anchor="end" fill="{BG}" font-size="11" font-weight="600">'
-                    f'{val:.1%}</text>'
-                )
+    # Bar chart series
+    bar_series = []
+    for mi, (key, label) in enumerate(zip(metric_keys, metric_labels)):
+        bar_series.append({
+            "name": label,
+            "type": "bar",
+            "data": [round((r.get(key) or 0) * 100, 1) for r in runs],
+            "itemStyle": {"borderRadius": [4, 4, 0, 0]},
+        })
 
-    # Legend — wrap to multiple rows if needed
-    legend_svg = []
-    lx = margin["left"]
-    ly = height - 30
-    for ri, run in enumerate(runs):
-        color = ACCENT_COLORS[ri % len(ACCENT_COLORS)]
-        name = run["model"]
-        text_w = len(name) * 7.5 + 30
-        if lx + text_w > width - margin["right"]:
-            lx = margin["left"]
-            ly += 18
-        legend_svg.append(
-            f'<rect x="{lx}" y="{ly}" width="12" height="12" rx="2" fill="{color}"/>'
-        )
-        legend_svg.append(
-            f'<text x="{lx + 18}" y="{ly + 11}" fill="{TEXT}" font-size="11">{name}</text>'
-        )
-        lx += text_w
+    # Latency: avg bars + p95 error bars
+    avg_latencies = [round(r.get("avg_latency_ms") or 0, 1) for r in runs]
+    p95_latencies = [round(r.get("p95_latency_ms") or r.get("avg_latency_ms") or 0, 1)
+                     for r in runs]
+    latency_error = [[0, round(p95 - avg, 1)] for avg, p95 in zip(avg_latencies, p95_latencies)]
 
-    title = (
-        f'<text x="{width / 2}" y="30" text-anchor="middle" fill="{TEXT}" '
-        f'font-size="16" font-weight="600">Model Comparison — Accuracy Metrics</text>'
-    )
+    # Scatter: latency vs accuracy
+    scatter_data = []
+    for run in runs:
+        scatter_data.append({
+            "value": [
+                round(run.get("avg_latency_ms") or 0, 1),
+                round((run.get("accuracy") or 0) * 100, 1),
+            ],
+            "name": run["model"],
+        })
 
-    return (
-        f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height + 20}" '
-        f'viewBox="0 0 {width} {height + 20}">'
-        f'<rect width="{width}" height="{height + 20}" rx="8" fill="{BG}"/>'
-        f'{title}'
-        f'{"".join(gridlines)}'
-        f'{"".join(bars_svg)}'
-        f'{"".join(labels_svg)}'
-        f'{"".join(legend_svg)}'
-        f'</svg>'
-    )
-
-
-def _svg_latency_chart(runs: list[dict], width: int = 800, height: int = 350) -> str:
-    """Bar chart for latency comparison with correct p95 whisker scaling."""
-    margin = {"top": 60, "right": 30, "bottom": 80, "left": 80}
-    chart_w = width - margin["left"] - margin["right"]
-    chart_h = height - margin["top"] - margin["bottom"]
-
-    # BUG FIX: scale to the max of p95 OR avg, whichever is higher
-    max_lat = max(
-        max(r.get("p95_latency_ms") or r["avg_latency_ms"], r["avg_latency_ms"])
-        for r in runs
-    ) * 1.15
-
-    bar_w = min(chart_w / (len(runs) * 1.8), 65)
-    gap = (chart_w - bar_w * len(runs)) / (len(runs) + 1)
-
-    bars = []
-    labels = []
-
-    # Y-axis gridlines
-    n_ticks = 5
-    for i in range(n_ticks + 1):
-        val = max_lat * i / n_ticks
-        y = margin["top"] + chart_h - (val / max_lat * chart_h)
-        bars.append(
-            f'<line x1="{margin["left"]}" y1="{y}" x2="{width - margin["right"]}" '
-            f'y2="{y}" stroke="{BORDER}" stroke-width="1"/>'
-        )
-        labels.append(
-            f'<text x="{margin["left"] - 10}" y="{y + 4}" text-anchor="end" '
-            f'fill="{TEXT_DIM}" font-size="11">{val:.0f}ms</text>'
-        )
-
-    for i, run in enumerate(runs):
-        color = ACCENT_COLORS[i % len(ACCENT_COLORS)]
-        x = margin["left"] + gap + i * (bar_w + gap)
-        bar_h = (run["avg_latency_ms"] / max_lat) * chart_h
-        y = margin["top"] + chart_h - bar_h
-
-        p95 = run.get("p95_latency_ms") or run["avg_latency_ms"]
-        p95_h = (p95 / max_lat) * chart_h
-        p95_y = margin["top"] + chart_h - p95_h
-
-        cx = x + bar_w / 2
-
-        # P95 whisker
-        bars.append(
-            f'<g style="cursor:pointer">'
-            f'{_tooltip(f"{run["model"]}: avg={run["avg_latency_ms"]:.0f}ms p95={p95:.0f}ms")}'
-            f'<line x1="{cx}" y1="{p95_y}" x2="{cx}" y2="{y}" '
-            f'stroke="{color}" stroke-width="2" opacity="0.5"/>'
-            f'<line x1="{cx - 8}" y1="{p95_y}" x2="{cx + 8}" y2="{p95_y}" '
-            f'stroke="{color}" stroke-width="2" opacity="0.5"/>'
-            f'</g>'
-        )
-
-        # Main bar
-        bars.append(
-            f'<g style="cursor:pointer">'
-            f'{_tooltip(f"{run["model"]}: {run["avg_latency_ms"]:.0f}ms avg")}'
-            f'<rect x="{x}" y="{y}" width="{bar_w}" height="{bar_h}" '
-            f'rx="3" fill="{color}" opacity="0.85">'
-            f'<animate attributeName="height" from="0" to="{bar_h}" dur="0.6s" fill="freeze"/>'
-            f'<animate attributeName="y" from="{margin["top"] + chart_h}" to="{y}" dur="0.6s" fill="freeze"/>'
-            f'</rect>'
-            f'</g>'
-        )
-
-        # Value label
-        bars.append(
-            f'<text x="{cx}" y="{y - 8}" text-anchor="middle" fill="{TEXT}" '
-            f'font-size="11" font-weight="600">{run["avg_latency_ms"]:.0f}ms</text>'
-        )
-
-        # Model name — rotated for readability with many models
-        labels.append(
-            f'<text x="{cx}" y="{margin["top"] + chart_h + 14}" text-anchor="end" '
-            f'fill="{TEXT}" font-size="11" '
-            f'transform="rotate(-35 {cx} {margin["top"] + chart_h + 14})">'
-            f'{run["model"]}</text>'
-        )
-
-    title = (
-        f'<text x="{width / 2}" y="30" text-anchor="middle" fill="{TEXT}" '
-        f'font-size="16" font-weight="600">Latency Comparison (avg + p95 whisker)</text>'
-    )
-    subtitle = (
-        f'<text x="{width / 2}" y="48" text-anchor="middle" fill="{TEXT_DIM}" '
-        f'font-size="12">Lower is better</text>'
-    )
-
-    return (
-        f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" '
-        f'viewBox="0 0 {width} {height}">'
-        f'<rect width="{width}" height="{height}" rx="8" fill="{BG}"/>'
-        f'{title}{subtitle}'
-        f'{"".join(bars)}'
-        f'{"".join(labels)}'
-        f'</svg>'
-    )
-
-
-def _svg_radar_chart(runs: list[dict], width: int = 500, height: int = 500) -> str:
-    """Radar/spider chart comparing models across all metrics."""
-    metrics = [
-        ("accuracy", "Exact Match"),
-        ("contains_rate", "Contains"),
-        ("avg_token_f1", "Token F1"),
-    ]
-    if any(r.get("judge_correct_rate") is not None for r in runs):
-        metrics.append(("judge_correct_rate", "Judge"))
-
-    max_lat = max(r["avg_latency_ms"] for r in runs) * 1.5
-    metrics.append(("_speed", "Speed"))
-
-    n = len(metrics)
-    cx, cy = width / 2, height / 2 + 10
-    radius = min(width, height) / 2 - 70
-
-    angle_step = 2 * math.pi / n
-    angles = [-math.pi / 2 + i * angle_step for i in range(n)]
-
-    def polar(angle, r):
-        return cx + r * math.cos(angle), cy + r * math.sin(angle)
-
-    svg_parts = []
-
-    # Grid rings with labels
-    for ring in [0.25, 0.5, 0.75, 1.0]:
-        points = " ".join(f"{polar(a, radius * ring)[0]},{polar(a, radius * ring)[1]}" for a in angles)
-        svg_parts.append(
-            f'<polygon points="{points}" fill="none" stroke="{BORDER}" stroke-width="1"/>'
-        )
-        rx, ry = polar(angles[0], radius * ring)
-        svg_parts.append(
-            f'<text x="{rx + 4}" y="{ry - 4}" fill="{TEXT_DIM}" font-size="9">{ring:.0%}</text>'
-        )
-
-    # Axis lines and labels
-    for i, (_, label) in enumerate(metrics):
-        px, py = polar(angles[i], radius)
-        lx, ly = polar(angles[i], radius + 30)
-        svg_parts.append(
-            f'<line x1="{cx}" y1="{cy}" x2="{px}" y2="{py}" stroke="{BORDER}" stroke-width="1"/>'
-        )
-        anchor = "middle"
-        if lx < cx - 10:
-            anchor = "end"
-        elif lx > cx + 10:
-            anchor = "start"
-        svg_parts.append(
-            f'<text x="{lx}" y="{ly + 4}" text-anchor="{anchor}" fill="{TEXT}" '
-            f'font-size="12" font-weight="500">{label}</text>'
-        )
-
-    # Data polygons with tooltips
-    for ri, run in enumerate(runs):
-        color = ACCENT_COLORS[ri % len(ACCENT_COLORS)]
-        values = []
-        for key, _ in metrics:
-            if key == "_speed":
-                values.append(1.0 - (run["avg_latency_ms"] / max_lat))
-            else:
-                values.append(run.get(key) or 0)
-
-        points = " ".join(
-            f"{polar(angles[i], radius * v)[0]},{polar(angles[i], radius * v)[1]}"
-            for i, v in enumerate(values)
-        )
-        tooltip_text = f'{run["model"]}: exact={run["accuracy"]:.0%} f1={run.get("avg_token_f1", 0):.2f} lat={run["avg_latency_ms"]:.0f}ms'
-        svg_parts.append(
-            f'<g style="cursor:pointer">'
-            f'{_tooltip(tooltip_text)}'
-            f'<polygon points="{points}" fill="{color}" fill-opacity="0.12" '
-            f'stroke="{color}" stroke-width="2"/>'
-            f'</g>'
-        )
-        for i, v in enumerate(values):
-            dx, dy = polar(angles[i], radius * v)
-            svg_parts.append(
-                f'<circle cx="{dx}" cy="{dy}" r="3.5" fill="{color}" stroke="{BG}" stroke-width="1"/>'
-            )
-
-    # Legend — wrap rows
-    lx = 20
-    ly = height - 25
-    for ri, run in enumerate(runs):
-        color = ACCENT_COLORS[ri % len(ACCENT_COLORS)]
-        name = run["model"]
-        text_w = len(name) * 7 + 28
-        if lx + text_w > width - 20:
-            lx = 20
-            ly += 16
-        svg_parts.append(
-            f'<rect x="{lx}" y="{ly}" width="10" height="10" rx="2" fill="{color}"/>'
-        )
-        svg_parts.append(
-            f'<text x="{lx + 15}" y="{ly + 10}" fill="{TEXT}" font-size="10">{name}</text>'
-        )
-        lx += text_w
-
-    extra_h = max(0, ly - (height - 25))  # expand if legend wrapped
-    total_h = height + extra_h + 10
-
-    title = (
-        f'<text x="{width / 2}" y="28" text-anchor="middle" fill="{TEXT}" '
-        f'font-size="16" font-weight="600">Model Profile</text>'
-    )
-
-    return (
-        f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{total_h}" '
-        f'viewBox="0 0 {width} {total_h}">'
-        f'<rect width="{width}" height="{total_h}" rx="8" fill="{BG}"/>'
-        f'{title}'
-        f'{"".join(svg_parts)}'
-        f'</svg>'
-    )
-
-
-# ── HTML Dashboard ────────────────────────────────────────────────────────────
-
-
-def _build_html(runs: list[dict]) -> str:
-    """Build a self-contained interactive HTML dashboard."""
-    details_json = {}
+    # Per-item details
+    details = {}
     for run in runs:
         raw = json.loads(run["raw_results"]) if run.get("raw_results") else {}
-        details_json[run["id"]] = {
+        details[run["id"]] = {
             "model": run["model"],
             "dataset": run["dataset"],
             "items": raw.get("details", []),
         }
 
-    radar_svg = _svg_radar_chart(runs)
-    bar_svg = _svg_bar_chart(runs)
-    latency_svg = _svg_latency_chart(runs)
+    return {
+        "models": models,
+        "metricLabels": metric_labels,
+        "heatmapData": heatmap_data,
+        "barSeries": bar_series,
+        "avgLatencies": avg_latencies,
+        "p95Latencies": p95_latencies,
+        "latencyError": latency_error,
+        "scatterData": scatter_data,
+        "details": details,
+        "runIds": [r["id"] for r in runs],
+        "createdAt": [r["created_at"][:19] for r in runs],
+        "hasJudge": has_judge,
+    }
 
-    # Summary stats for cards
-    best_accuracy = max(runs, key=lambda r: r.get("accuracy", 0))
-    fastest = min(runs, key=lambda r: r["avg_latency_ms"])
-    best_f1 = max(runs, key=lambda r: r.get("avg_token_f1", 0))
 
-    # Build the results table rows
+def _build_html(runs: list[dict]) -> str:
+    """Build the full self-contained ECharts HTML dashboard."""
+    summary = _summary_cards(runs)
+    data = _chart_data(runs)
+    data_json = json.dumps(data, indent=None)
+
+    # Table rows
     table_rows = ""
     for run in runs:
-        judge_col = ""
-        if run.get("judge_correct_rate") is not None:
-            judge_col = f'<td>{run["judge_correct_rate"]:.1%}</td>'
-        else:
-            judge_col = '<td class="dim">\u2014</td>'
-
-        table_rows += f"""
-        <tr data-run-id="{run['id']}" onclick="showDetails({run['id']})">
-            <td class="model-name">{run['model']}</td>
-            <td>{run['accuracy']:.1%}</td>
-            <td>{run['contains_rate']:.1%}</td>
-            <td>{run.get('avg_token_f1', 0):.3f}</td>
-            <td>{run['avg_latency_ms']:.0f}ms</td>
-            {judge_col}
-            <td class="dim">{run['created_at'][:19]}</td>
-        </tr>"""
-
-    # Model checkboxes for radar filter
-    model_checks = ""
-    for ri, run in enumerate(runs):
-        color = ACCENT_COLORS[ri % len(ACCENT_COLORS)]
-        checked = "checked" if ri < 4 else ""
-        model_checks += (
-            f'<label class="model-check" style="--accent:{color}">'
-            f'<input type="checkbox" value="{run["id"]}" {checked} onchange="updateRadar()">'
-            f'<span class="check-dot" style="background:{color}"></span>'
-            f'{run["model"]}</label>'
+        judge_col = (
+            f'<td>{run["judge_correct_rate"]:.1%}</td>'
+            if run.get("judge_correct_rate") is not None
+            else '<td class="dim">\u2014</td>'
         )
+        table_rows += dedent(f"""\
+            <tr data-run-id="{run['id']}" onclick="showDetails({run['id']})">
+                <td class="model-name">{run['model']}</td>
+                <td>{(run['accuracy'] or 0):.1%}</td>
+                <td>{(run['contains_rate'] or 0):.1%}</td>
+                <td>{(run.get('avg_token_f1') or 0):.3f}</td>
+                <td>{(run.get('avg_latency_ms') or 0):.0f}ms</td>
+                {judge_col}
+                <td class="dim">{run['created_at'][:19]}</td>
+            </tr>\n""")
 
     return f"""<!DOCTYPE html>
 <html lang="en">
@@ -416,68 +168,52 @@ def _build_html(runs: list[dict]) -> str:
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ml-eval-harness \u2014 Results Dashboard</title>
+<script src="{ECHARTS_CDN}"><\/script>
 <style>
   :root {{
     --bg: {BG}; --card: {BG_CARD}; --border: {BORDER};
     --text: {TEXT}; --dim: {TEXT_DIM};
-    --blue: #58a6ff; --green: #3fb950; --yellow: #e3b341;
-    --red: #f85149; --purple: #bc8cff;
+    --blue: {ACCENT}; --green: {GREEN}; --yellow: {YELLOW};
+    --red: {RED}; --purple: {PURPLE};
   }}
   * {{ margin: 0; padding: 0; box-sizing: border-box; }}
   body {{
     background: var(--bg); color: var(--text);
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
     font-size: 14px; line-height: 1.5;
-    padding: 2rem; max-width: 1200px; margin: 0 auto;
+    padding: 2rem; max-width: 1400px; margin: 0 auto;
   }}
   h1 {{ font-size: 1.8rem; font-weight: 600; margin-bottom: 0.5rem; }}
   h1 span {{ color: var(--blue); }}
   .subtitle {{ color: var(--dim); margin-bottom: 1.5rem; }}
 
-  /* ── Summary Cards ── */
+  /* Summary cards */
   .summary-cards {{
     display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; margin-bottom: 2rem;
   }}
-  .stat-card {{
-    background: var(--card); border: 1px solid var(--border); border-radius: 10px;
-    padding: 1.2rem; text-align: center;
+  .card {{
+    background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+    padding: 1.25rem; text-align: center;
   }}
-  .stat-card .stat-value {{
-    font-size: 1.6rem; font-weight: 700; margin-bottom: 0.25rem;
-  }}
-  .stat-card .stat-label {{ color: var(--dim); font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; }}
-  .stat-card .stat-detail {{ color: var(--dim); font-size: 12px; margin-top: 0.3rem; }}
-  .stat-card:nth-child(1) .stat-value {{ color: var(--blue); }}
-  .stat-card:nth-child(2) .stat-value {{ color: var(--green); }}
-  .stat-card:nth-child(3) .stat-value {{ color: var(--purple); }}
-  .stat-card:nth-child(4) .stat-value {{ color: var(--yellow); }}
+  .card-label {{ color: var(--dim); font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.25rem; }}
+  .card-value {{ font-size: 1.8rem; font-weight: 700; color: var(--blue); }}
+  .card-sub {{ color: var(--dim); font-size: 12px; margin-top: 0.25rem; }}
 
-  /* ── Charts ── */
+  /* Chart grid */
   .charts {{ display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 2rem; }}
   .chart-card {{
     background: var(--card); border: 1px solid var(--border); border-radius: 12px;
-    padding: 1.5rem; overflow: hidden;
+    padding: 1rem; overflow: hidden;
   }}
   .chart-card.full {{ grid-column: 1 / -1; }}
-  .chart-card svg {{ width: 100%; height: auto; }}
+  .chart-container {{ width: 100%; height: 400px; }}
+  .chart-container.tall {{ height: 480px; }}
 
-  /* ── Radar filter ── */
-  .radar-controls {{ margin-bottom: 0.75rem; display: flex; flex-wrap: wrap; gap: 0.5rem; }}
-  .model-check {{
-    display: inline-flex; align-items: center; gap: 6px;
-    font-size: 12px; cursor: pointer; padding: 3px 8px;
-    border-radius: 6px; border: 1px solid var(--border);
-    transition: background 0.15s;
+  /* Table */
+  .section-title {{
+    font-size: 1.1rem; font-weight: 600; margin: 2rem 0 1rem;
+    padding-bottom: 0.5rem; border-bottom: 1px solid var(--border);
   }}
-  .model-check:hover {{ background: rgba(255,255,255,0.04); }}
-  .model-check input {{ display: none; }}
-  .check-dot {{
-    width: 8px; height: 8px; border-radius: 50%; opacity: 0.35;
-    transition: opacity 0.15s;
-  }}
-  .model-check input:checked ~ .check-dot {{ opacity: 1; }}
-
-  /* ── Table ── */
   table {{
     width: 100%; border-collapse: collapse; background: var(--card);
     border: 1px solid var(--border); border-radius: 12px; overflow: hidden;
@@ -485,24 +221,19 @@ def _build_html(runs: list[dict]) -> str:
   th {{
     text-align: left; padding: 12px 16px; font-weight: 600; font-size: 12px;
     text-transform: uppercase; letter-spacing: 0.05em; color: var(--dim);
-    border-bottom: 1px solid var(--border); background: var(--card);
-    cursor: pointer; user-select: none; white-space: nowrap;
-    transition: color 0.15s;
+    border-bottom: 1px solid var(--border); background: var(--card); cursor: pointer;
+    user-select: none;
   }}
   th:hover {{ color: var(--text); }}
-  th .sort-arrow {{ font-size: 10px; margin-left: 4px; opacity: 0.4; }}
-  th.sorted .sort-arrow {{ opacity: 1; color: var(--blue); }}
+  th .sort-arrow {{ margin-left: 4px; font-size: 10px; }}
   td {{ padding: 10px 16px; border-bottom: 1px solid var(--border); }}
-  tbody tr {{ cursor: pointer; transition: background 0.15s; }}
-  tbody tr:hover {{ background: rgba(88,166,255,0.06); }}
-  tbody tr.active {{ background: rgba(88,166,255,0.1); }}
+  tr {{ cursor: pointer; transition: background 0.15s; }}
+  tr:hover {{ background: rgba(88,166,255,0.06); }}
+  tr.active {{ background: rgba(88,166,255,0.1); }}
   .model-name {{ font-weight: 600; color: var(--blue); }}
   .dim {{ color: var(--dim); }}
 
-  .section-title {{
-    font-size: 1.1rem; font-weight: 600; margin: 2rem 0 1rem;
-    padding-bottom: 0.5rem; border-bottom: 1px solid var(--border);
-  }}
+  /* Details panel */
   #details-panel {{
     background: var(--card); border: 1px solid var(--border); border-radius: 12px;
     padding: 1.5rem; margin-top: 1rem; display: none;
@@ -513,20 +244,21 @@ def _build_html(runs: list[dict]) -> str:
     border: 1px solid var(--border); background: var(--bg);
   }}
   .detail-item .prompt {{ color: var(--blue); font-weight: 500; margin-bottom: 0.5rem; }}
-  .detail-item .response {{ margin: 0.5rem 0; padding: 0.5rem; background: var(--card); border-radius: 4px; }}
+  .detail-item .response {{
+    margin: 0.5rem 0; padding: 0.5rem; background: var(--card); border-radius: 4px;
+    word-break: break-word;
+  }}
   .badge {{
     display: inline-block; padding: 2px 8px; border-radius: 12px;
     font-size: 11px; font-weight: 600; margin-right: 4px;
   }}
   .badge.correct {{ background: rgba(63,185,80,0.15); color: var(--green); }}
-  .badge.partial {{ background: rgba(227,179,65,0.15); color: var(--yellow); }}
+  .badge.partial {{ background: rgba(210,153,34,0.15); color: var(--yellow); }}
   .badge.wrong {{ background: rgba(248,81,73,0.15); color: var(--red); }}
   .badge.metric {{ background: rgba(88,166,255,0.1); color: var(--blue); }}
-  .f1-bar {{
-    height: 4px; border-radius: 2px; background: var(--border);
-    margin-top: 4px; overflow: hidden;
-  }}
+  .f1-bar {{ height: 4px; border-radius: 2px; background: var(--border); margin-top: 4px; overflow: hidden; }}
   .f1-bar-fill {{ height: 100%; border-radius: 2px; background: var(--green); transition: width 0.3s; }}
+
   @media (max-width: 768px) {{
     .charts {{ grid-template-columns: 1fr; }}
     .summary-cards {{ grid-template-columns: repeat(2, 1fr); }}
@@ -538,190 +270,361 @@ def _build_html(runs: list[dict]) -> str:
 <h1><span>ml-eval-harness</span> \u2014 Results</h1>
 <p class="subtitle">Comparing local LLMs via Ollama \u00b7 {len(runs)} run(s) recorded</p>
 
-<!-- Summary Cards -->
-<div class="summary-cards">
-  <div class="stat-card">
-    <div class="stat-value">{len(runs)}</div>
-    <div class="stat-label">Total Runs</div>
-    <div class="stat-detail">{len(set(r['model'] for r in runs))} unique models</div>
-  </div>
-  <div class="stat-card">
-    <div class="stat-value">{best_accuracy['accuracy']:.0%}</div>
-    <div class="stat-label">Best Accuracy</div>
-    <div class="stat-detail">{best_accuracy['model']}</div>
-  </div>
-  <div class="stat-card">
-    <div class="stat-value">{best_f1.get('avg_token_f1', 0):.2f}</div>
-    <div class="stat-label">Best Token F1</div>
-    <div class="stat-detail">{best_f1['model']}</div>
-  </div>
-  <div class="stat-card">
-    <div class="stat-value">{fastest['avg_latency_ms']:.0f}ms</div>
-    <div class="stat-label">Fastest</div>
-    <div class="stat-detail">{fastest['model']}</div>
-  </div>
-</div>
+{summary}
 
 <div class="charts">
   <div class="chart-card">
-    <div class="radar-controls">{model_checks}</div>
-    <div id="radar-container">{radar_svg}</div>
+    <div id="chart-heatmap" class="chart-container"></div>
   </div>
-  <div class="chart-card">{latency_svg}</div>
-  <div class="chart-card full">{bar_svg}</div>
+  <div class="chart-card">
+    <div id="chart-scatter" class="chart-container"></div>
+  </div>
+  <div class="chart-card full">
+    <div id="chart-bars" class="chart-container"></div>
+  </div>
+  <div class="chart-card full">
+    <div id="chart-latency" class="chart-container tall"></div>
+  </div>
 </div>
 
 <div class="section-title">All Runs</div>
-<table id="results-table">
+<table id="runs-table">
   <thead>
     <tr>
-      <th data-col="0" data-type="str" onclick="sortTable(this)">Model <span class="sort-arrow">\u25B2</span></th>
-      <th data-col="1" data-type="num" onclick="sortTable(this)">Exact Match <span class="sort-arrow">\u25B2</span></th>
-      <th data-col="2" data-type="num" onclick="sortTable(this)">Contains <span class="sort-arrow">\u25B2</span></th>
-      <th data-col="3" data-type="num" onclick="sortTable(this)">Token F1 <span class="sort-arrow">\u25B2</span></th>
-      <th data-col="4" data-type="num" onclick="sortTable(this)">Avg Latency <span class="sort-arrow">\u25B2</span></th>
-      <th data-col="5" data-type="num" onclick="sortTable(this)">Judge <span class="sort-arrow">\u25B2</span></th>
-      <th data-col="6" data-type="str" onclick="sortTable(this)">Date <span class="sort-arrow">\u25B2</span></th>
+      <th data-col="model">Model <span class="sort-arrow"></span></th>
+      <th data-col="accuracy">Exact Match <span class="sort-arrow"></span></th>
+      <th data-col="contains">Contains <span class="sort-arrow"></span></th>
+      <th data-col="f1">Token F1 <span class="sort-arrow"></span></th>
+      <th data-col="latency">Avg Latency <span class="sort-arrow"></span></th>
+      <th data-col="judge">Judge <span class="sort-arrow"></span></th>
+      <th data-col="date">Date <span class="sort-arrow"></span></th>
     </tr>
   </thead>
-  <tbody>{table_rows}</tbody>
+  <tbody>
+    {table_rows}
+  </tbody>
 </table>
 
 <div class="section-title">Per-Item Details <span class="dim" style="font-weight:400;font-size:0.85rem">(click a run above)</span></div>
 <div id="details-panel"></div>
 
 <script>
-const DATA = {json.dumps(details_json)};
-const ALL_RUNS = {json.dumps([{
-    "id": r["id"], "model": r["model"], "accuracy": r.get("accuracy", 0),
-    "contains_rate": r.get("contains_rate", 0), "avg_token_f1": r.get("avg_token_f1", 0),
-    "avg_latency_ms": r["avg_latency_ms"],
-    "judge_correct_rate": r.get("judge_correct_rate")
-} for r in runs])};
+const D = {data_json};
 const COLORS = {json.dumps(ACCENT_COLORS)};
 
-// ── Sortable Table ──
-let sortState = {{ col: null, asc: true }};
-function sortTable(th) {{
-  const col = parseInt(th.dataset.col);
-  const type = th.dataset.type;
-  const tbody = document.querySelector('#results-table tbody');
-  const rows = Array.from(tbody.querySelectorAll('tr'));
+// -- ECharts dark theme base --
+const THEME = {{
+  backgroundColor: 'transparent',
+  textStyle: {{ color: '{TEXT}' }},
+  legend: {{ textStyle: {{ color: '{TEXT_DIM}' }} }},
+  categoryAxis: {{
+    axisLine: {{ lineStyle: {{ color: '{BORDER}' }} }},
+    axisLabel: {{ color: '{TEXT_DIM}' }},
+    splitLine: {{ lineStyle: {{ color: '{BORDER}', type: 'dashed' }} }},
+  }},
+  valueAxis: {{
+    axisLine: {{ lineStyle: {{ color: '{BORDER}' }} }},
+    axisLabel: {{ color: '{TEXT_DIM}' }},
+    splitLine: {{ lineStyle: {{ color: '{BORDER}', type: 'dashed' }} }},
+  }},
+}};
 
-  if (sortState.col === col) {{ sortState.asc = !sortState.asc; }}
-  else {{ sortState.col = col; sortState.asc = type === 'str'; }}
-
-  document.querySelectorAll('#results-table th').forEach(h => h.classList.remove('sorted'));
-  th.classList.add('sorted');
-  th.querySelector('.sort-arrow').textContent = sortState.asc ? '\u25B2' : '\u25BC';
-
-  rows.sort((a, b) => {{
-    let av = a.cells[col].textContent.trim();
-    let bv = b.cells[col].textContent.trim();
-    if (type === 'num') {{
-      av = parseFloat(av) || 0;
-      bv = parseFloat(bv) || 0;
-    }}
-    let cmp = av < bv ? -1 : av > bv ? 1 : 0;
-    return sortState.asc ? cmp : -cmp;
-  }});
-
-  rows.forEach(r => tbody.appendChild(r));
+function initChart(id) {{
+  const el = document.getElementById(id);
+  const chart = echarts.init(el, null, {{ renderer: 'canvas' }});
+  window.addEventListener('resize', () => chart.resize());
+  return chart;
 }}
 
-// ── Radar Filter ──
-function updateRadar() {{
-  const checked = Array.from(document.querySelectorAll('.model-check input:checked'))
-    .map(cb => parseInt(cb.value));
-  const filtered = ALL_RUNS.filter(r => checked.includes(r.id));
-  if (filtered.length === 0) return;
-
-  // Rebuild radar SVG client-side
-  const container = document.getElementById('radar-container');
-  const W = 500, H = 500;
-  const cx = W/2, cy = H/2 + 10, R = W/2 - 70;
-
-  const metrics = ['accuracy', 'contains_rate', 'avg_token_f1'];
-  const labels = ['Exact Match', 'Contains', 'Token F1'];
-  if (filtered.some(r => r.judge_correct_rate != null)) {{
-    metrics.push('judge_correct_rate'); labels.push('Judge');
-  }}
-  const maxLat = Math.max(...filtered.map(r => r.avg_latency_ms)) * 1.5;
-  metrics.push('_speed'); labels.push('Speed');
-
-  const n = metrics.length;
-  const angles = Array.from({{length: n}}, (_, i) => -Math.PI/2 + i * 2 * Math.PI / n);
-  const polar = (a, r) => [cx + r * Math.cos(a), cy + r * Math.sin(a)];
-
-  let svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${{W}}" height="${{H}}" viewBox="0 0 ${{W}} ${{H}}">`;
-  svg += `<rect width="${{W}}" height="${{H}}" rx="8" fill="{BG}"/>`;
-  svg += `<text x="${{W/2}}" y="28" text-anchor="middle" fill="{TEXT}" font-size="16" font-weight="600">Model Profile</text>`;
-
-  // Grid
-  [0.25, 0.5, 0.75, 1.0].forEach(ring => {{
-    const pts = angles.map(a => polar(a, R*ring).join(',')).join(' ');
-    svg += `<polygon points="${{pts}}" fill="none" stroke="{BORDER}" stroke-width="1"/>`;
+// -- Heatmap --
+(function() {{
+  const chart = initChart('chart-heatmap');
+  const maxVal = Math.max(...D.heatmapData.map(d => d[2]), 0.01);
+  chart.setOption({{
+    ...THEME,
+    title: {{ text: 'Metric Heatmap', left: 'center', top: 10,
+             textStyle: {{ color: '{TEXT}', fontSize: 16, fontWeight: 600 }} }},
+    tooltip: {{
+      formatter: function(p) {{
+        const metric = D.metricLabels[p.data[0]];
+        const model = D.models[p.data[1]];
+        return '<b>' + model + '</b><br/>' + metric + ': ' + (p.data[2] * 100).toFixed(1) + '%';
+      }}
+    }},
+    grid: {{ top: 50, bottom: 60, left: 160, right: 40 }},
+    xAxis: {{
+      type: 'category', data: D.metricLabels, position: 'bottom',
+      axisLabel: {{ color: '{TEXT_DIM}', fontSize: 12 }},
+      axisLine: {{ lineStyle: {{ color: '{BORDER}' }} }},
+    }},
+    yAxis: {{
+      type: 'category', data: D.models,
+      axisLabel: {{ color: '{TEXT}', fontSize: 12 }},
+      axisLine: {{ lineStyle: {{ color: '{BORDER}' }} }},
+    }},
+    visualMap: {{
+      min: 0, max: 1, calculable: false, orient: 'horizontal',
+      left: 'center', bottom: 5,
+      inRange: {{ color: ['{BG}', '{ACCENT}', '{GREEN}'] }},
+      textStyle: {{ color: '{TEXT_DIM}' }},
+      formatter: function(v) {{ return (v * 100).toFixed(0) + '%'; }},
+    }},
+    series: [{{
+      type: 'heatmap', data: D.heatmapData,
+      label: {{
+        show: true,
+        formatter: function(p) {{ return (p.data[2] * 100).toFixed(1) + '%'; }},
+        color: '{TEXT}', fontSize: 12, fontWeight: 600,
+      }},
+      itemStyle: {{ borderRadius: 4, borderColor: '{BG_CARD}', borderWidth: 3 }},
+      emphasis: {{ itemStyle: {{ shadowBlur: 10, shadowColor: 'rgba(88,166,255,0.4)' }} }},
+    }}],
+    animationDuration: 800,
+    animationEasing: 'cubicOut',
   }});
+}})();
 
-  // Axes
-  angles.forEach((a, i) => {{
-    const [px,py] = polar(a, R);
-    const [lx,ly] = polar(a, R+30);
-    svg += `<line x1="${{cx}}" y1="${{cy}}" x2="${{px}}" y2="${{py}}" stroke="{BORDER}" stroke-width="1"/>`;
-    const anchor = lx < cx-10 ? 'end' : lx > cx+10 ? 'start' : 'middle';
-    svg += `<text x="${{lx}}" y="${{ly+4}}" text-anchor="${{anchor}}" fill="{TEXT}" font-size="12" font-weight="500">${{labels[i]}}</text>`;
+// -- Scatter: Latency vs Accuracy --
+(function() {{
+  const chart = initChart('chart-scatter');
+  chart.setOption({{
+    ...THEME,
+    title: {{ text: 'Latency vs Accuracy', left: 'center', top: 10,
+             textStyle: {{ color: '{TEXT}', fontSize: 16, fontWeight: 600 }} }},
+    tooltip: {{
+      formatter: function(p) {{
+        return '<b>' + p.data.name + '</b><br/>'
+          + 'Latency: ' + p.data.value[0] + 'ms<br/>'
+          + 'Accuracy: ' + p.data.value[1] + '%';
+      }}
+    }},
+    grid: {{ top: 50, bottom: 50, left: 70, right: 40 }},
+    xAxis: {{
+      name: 'Avg Latency (ms)', nameLocation: 'center', nameGap: 30,
+      nameTextStyle: {{ color: '{TEXT_DIM}' }},
+      type: 'value',
+      axisLabel: {{ color: '{TEXT_DIM}' }},
+      axisLine: {{ lineStyle: {{ color: '{BORDER}' }} }},
+      splitLine: {{ lineStyle: {{ color: '{BORDER}', type: 'dashed' }} }},
+    }},
+    yAxis: {{
+      name: 'Exact Match (%)', nameLocation: 'center', nameGap: 45,
+      nameTextStyle: {{ color: '{TEXT_DIM}' }},
+      type: 'value', min: 0, max: 100,
+      axisLabel: {{ color: '{TEXT_DIM}' }},
+      axisLine: {{ lineStyle: {{ color: '{BORDER}' }} }},
+      splitLine: {{ lineStyle: {{ color: '{BORDER}', type: 'dashed' }} }},
+    }},
+    series: [{{
+      type: 'scatter', symbolSize: 18,
+      data: D.scatterData,
+      itemStyle: {{ color: '{ACCENT}', borderColor: '{TEXT}', borderWidth: 1 }},
+      emphasis: {{
+        itemStyle: {{ shadowBlur: 15, shadowColor: 'rgba(88,166,255,0.5)' }},
+        scale: 1.4,
+      }},
+      label: {{
+        show: true, position: 'top',
+        formatter: function(p) {{ return p.data.name; }},
+        color: '{TEXT_DIM}', fontSize: 11,
+      }},
+    }}],
+    animationDuration: 1000,
+    animationEasing: 'elasticOut',
   }});
+}})();
 
-  // Data
-  filtered.forEach((run, ri) => {{
-    const color = COLORS[ALL_RUNS.findIndex(r => r.id === run.id) % COLORS.length];
-    const vals = metrics.map(k => k === '_speed' ? 1 - run.avg_latency_ms / maxLat : (run[k] || 0));
-    const pts = vals.map((v, i) => polar(angles[i], R*v).join(',')).join(' ');
-    svg += `<polygon points="${{pts}}" fill="${{color}}" fill-opacity="0.12" stroke="${{color}}" stroke-width="2"/>`;
-    vals.forEach((v, i) => {{
-      const [dx,dy] = polar(angles[i], R*v);
-      svg += `<circle cx="${{dx}}" cy="${{dy}}" r="3.5" fill="${{color}}" stroke="{BG}" stroke-width="1"/>`;
+// -- Grouped Bar Chart --
+(function() {{
+  const chart = initChart('chart-bars');
+  const series = D.barSeries.map(function(s, i) {{
+    s.itemStyle = s.itemStyle || {{}};
+    s.itemStyle.color = COLORS[i % COLORS.length];
+    s.emphasis = {{ itemStyle: {{ shadowBlur: 10, shadowColor: 'rgba(0,0,0,0.3)' }} }};
+    return s;
+  }});
+  chart.setOption({{
+    ...THEME,
+    title: {{ text: 'Model Comparison \u2014 Accuracy Metrics', left: 'center', top: 10,
+             textStyle: {{ color: '{TEXT}', fontSize: 16, fontWeight: 600 }} }},
+    tooltip: {{
+      trigger: 'axis', axisPointer: {{ type: 'shadow' }},
+      formatter: function(params) {{
+        let html = '<b>' + params[0].axisValue + '</b><br/>';
+        params.forEach(function(p) {{
+          html += '<span style="color:' + p.color + '">\u25cf</span> '
+            + p.seriesName + ': ' + p.data + '%<br/>';
+        }});
+        return html;
+      }}
+    }},
+    legend: {{
+      top: 38, textStyle: {{ color: '{TEXT_DIM}' }},
+    }},
+    grid: {{ top: 80, bottom: 60, left: 50, right: 30 }},
+    xAxis: {{
+      type: 'category', data: D.models,
+      axisLabel: {{ color: '{TEXT_DIM}', fontSize: 11, rotate: D.models.length > 5 ? 20 : 0 }},
+      axisLine: {{ lineStyle: {{ color: '{BORDER}' }} }},
+    }},
+    yAxis: {{
+      type: 'value', max: 100,
+      axisLabel: {{ color: '{TEXT_DIM}', formatter: '{{value}}%' }},
+      axisLine: {{ lineStyle: {{ color: '{BORDER}' }} }},
+      splitLine: {{ lineStyle: {{ color: '{BORDER}', type: 'dashed' }} }},
+    }},
+    series: series,
+    animationDuration: 800,
+    animationEasing: 'cubicOut',
+    animationDelay: function(idx) {{ return idx * 80; }},
+  }});
+}})();
+
+// -- Latency Chart --
+(function() {{
+  const chart = initChart('chart-latency');
+  chart.setOption({{
+    ...THEME,
+    title: {{ text: 'Latency Comparison (avg + p95)', left: 'center', top: 10,
+             textStyle: {{ color: '{TEXT}', fontSize: 16, fontWeight: 600 }} }},
+    tooltip: {{
+      trigger: 'axis', axisPointer: {{ type: 'shadow' }},
+      formatter: function(params) {{
+        const idx = params[0].dataIndex;
+        return '<b>' + D.models[idx] + '</b><br/>'
+          + 'Avg: ' + D.avgLatencies[idx] + 'ms<br/>'
+          + 'P95: ' + D.p95Latencies[idx] + 'ms';
+      }}
+    }},
+    legend: {{
+      top: 38, textStyle: {{ color: '{TEXT_DIM}' }},
+    }},
+    grid: {{ top: 80, bottom: 60, left: 70, right: 30 }},
+    xAxis: {{
+      type: 'category', data: D.models,
+      axisLabel: {{ color: '{TEXT_DIM}', fontSize: 11, rotate: D.models.length > 5 ? 20 : 0 }},
+      axisLine: {{ lineStyle: {{ color: '{BORDER}' }} }},
+    }},
+    yAxis: {{
+      type: 'value',
+      axisLabel: {{ color: '{TEXT_DIM}', formatter: '{{value}}ms' }},
+      axisLine: {{ lineStyle: {{ color: '{BORDER}' }} }},
+      splitLine: {{ lineStyle: {{ color: '{BORDER}', type: 'dashed' }} }},
+    }},
+    series: [
+      {{
+        name: 'Avg Latency',
+        type: 'bar',
+        data: D.avgLatencies,
+        itemStyle: {{
+          borderRadius: [4, 4, 0, 0],
+          color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+            {{ offset: 0, color: '{ACCENT}' }},
+            {{ offset: 1, color: 'rgba(88,166,255,0.3)' }},
+          ]),
+        }},
+        emphasis: {{ itemStyle: {{ shadowBlur: 10, shadowColor: 'rgba(88,166,255,0.4)' }} }},
+        label: {{
+          show: true, position: 'top',
+          formatter: function(p) {{ return p.value + 'ms'; }},
+          color: '{TEXT_DIM}', fontSize: 11,
+        }},
+      }},
+      {{
+        name: 'P95 Latency',
+        type: 'bar',
+        data: D.p95Latencies,
+        itemStyle: {{
+          borderRadius: [4, 4, 0, 0],
+          color: 'rgba(88,166,255,0.15)',
+          borderColor: '{ACCENT}',
+          borderWidth: 1,
+          borderType: 'dashed',
+        }},
+        barGap: '-100%',
+        z: -1,
+      }},
+    ],
+    animationDuration: 800,
+    animationEasing: 'cubicOut',
+    animationDelay: function(idx) {{ return idx * 100; }},
+  }});
+}})();
+
+// -- Table sorting --
+(function() {{
+  const table = document.getElementById('runs-table');
+  const tbody = table.querySelector('tbody');
+  const headers = table.querySelectorAll('th');
+  let sortCol = null;
+  let sortAsc = true;
+
+  headers.forEach(function(th) {{
+    th.addEventListener('click', function() {{
+      const col = th.dataset.col;
+      if (sortCol === col) {{ sortAsc = !sortAsc; }}
+      else {{ sortCol = col; sortAsc = true; }}
+
+      headers.forEach(function(h) {{ h.querySelector('.sort-arrow').textContent = ''; }});
+      th.querySelector('.sort-arrow').textContent = sortAsc ? '\u25b2' : '\u25bc';
+
+      const rows = Array.from(tbody.querySelectorAll('tr'));
+      rows.sort(function(a, b) {{
+        const cellsA = a.querySelectorAll('td');
+        const cellsB = b.querySelectorAll('td');
+        let idx = Array.from(headers).indexOf(th);
+        let va = cellsA[idx].textContent.trim();
+        let vb = cellsB[idx].textContent.trim();
+
+        // Try numeric sort
+        const na = parseFloat(va);
+        const nb = parseFloat(vb);
+        if (!isNaN(na) && !isNaN(nb)) {{
+          return sortAsc ? na - nb : nb - na;
+        }}
+        return sortAsc ? va.localeCompare(vb) : vb.localeCompare(va);
+      }});
+      rows.forEach(function(r) {{ tbody.appendChild(r); }});
     }});
   }});
+}})();
 
-  svg += '</svg>';
-  container.innerHTML = svg;
-}}
-
-// ── Details Panel ──
+// -- Per-item details --
 function showDetails(runId) {{
   const panel = document.getElementById('details-panel');
-  const run = DATA[runId];
+  const run = D.details[runId];
   if (!run || !run.items.length) {{
     panel.innerHTML = '<p class="dim">No per-item details for this run.</p>';
     panel.classList.add('visible');
     return;
   }}
 
-  document.querySelectorAll('tr.active').forEach(r => r.classList.remove('active'));
-  document.querySelector(`tr[data-run-id="${{runId}}"]`)?.classList.add('active');
+  document.querySelectorAll('tr.active').forEach(function(r) {{ r.classList.remove('active'); }});
+  const row = document.querySelector('tr[data-run-id="' + runId + '"]');
+  if (row) row.classList.add('active');
 
-  let html = `<h3 style="margin-bottom:1rem">${{run.model}} \u2014 ${{run.items.length}} items</h3>`;
-  run.items.forEach((item, i) => {{
+  let html = '<h3 style="margin-bottom:1rem">' + run.model + ' \u2014 ' + run.items.length + ' items</h3>';
+  run.items.forEach(function(item, i) {{
     const judgeBadge = item.judge_verdict
-      ? `<span class="badge ${{item.judge_verdict}}">${{item.judge_verdict}}</span>
-         <span class="dim" style="font-size:12px">${{item.judge_reason || ''}}</span>`
+      ? '<span class="badge ' + item.judge_verdict + '">' + item.judge_verdict + '</span>'
+        + ' <span class="dim" style="font-size:12px">' + (item.judge_reason || '') + '</span>'
       : '';
+
     const f1Pct = ((item.token_f1 || 0) * 100).toFixed(0);
-    html += `
-      <div class="detail-item">
-        <div class="prompt">${{i+1}}. ${{item.prompt}}</div>
-        <div><strong>Expected:</strong> ${{item.expected}}</div>
-        <div class="response"><strong>Response:</strong> ${{item.response}}</div>
-        <div>
-          <span class="badge metric">exact: ${{item.exact_match ? '\u2713' : '\u2717'}}</span>
-          <span class="badge metric">contains: ${{item.contains ? '\u2713' : '\u2717'}}</span>
-          <span class="badge metric">F1: ${{f1Pct}}%</span>
-          <span class="badge metric">${{(item.latency_s * 1000).toFixed(0)}}ms</span>
-          ${{judgeBadge}}
-        </div>
-        <div class="f1-bar"><div class="f1-bar-fill" style="width:${{f1Pct}}%"></div></div>
-      </div>`;
+
+    html += '<div class="detail-item">'
+      + '<div class="prompt">' + (i+1) + '. ' + item.prompt + '</div>'
+      + '<div><strong>Expected:</strong> ' + item.expected + '</div>'
+      + '<div class="response"><strong>Response:</strong> ' + item.response + '</div>'
+      + '<div>'
+      + '<span class="badge metric">exact: ' + (item.exact_match ? '\u2713' : '\u2717') + '</span>'
+      + '<span class="badge metric">contains: ' + (item.contains ? '\u2713' : '\u2717') + '</span>'
+      + '<span class="badge metric">F1: ' + f1Pct + '%</span>'
+      + '<span class="badge metric">' + (item.latency_s * 1000).toFixed(0) + 'ms</span>'
+      + ' ' + judgeBadge
+      + '</div>'
+      + '<div class="f1-bar"><div class="f1-bar-fill" style="width:' + f1Pct + '%"></div></div>'
+      + '</div>';
   }});
 
   panel.innerHTML = html;
@@ -732,11 +635,8 @@ function showDetails(runId) {{
 </html>"""
 
 
-# ── Main entry point ─────────────────────────────────────────────────────────
-
-
 def generate(db_path: str = "results.db", output_dir: str = "docs"):
-    """Generate all visualizations."""
+    """Generate the ECharts HTML dashboard."""
     out = Path(output_dir)
     out.mkdir(parents=True, exist_ok=True)
 
@@ -745,28 +645,20 @@ def generate(db_path: str = "results.db", output_dir: str = "docs"):
         print("No runs found in database.")
         return
 
-    print(f"Generating visualizations for {len(runs)} run(s)...")
-
-    radar = _svg_radar_chart(runs)
-    (out / "radar.svg").write_text(radar)
-    print(f"  \u2192 {out / 'radar.svg'}")
-
-    bar = _svg_bar_chart(runs)
-    (out / "comparison.svg").write_text(bar)
-    print(f"  \u2192 {out / 'comparison.svg'}")
-
-    latency = _svg_latency_chart(runs)
-    (out / "latency.svg").write_text(latency)
-    print(f"  \u2192 {out / 'latency.svg'}")
+    print(f"Generating dashboard for {len(runs)} run(s)...")
 
     html = _build_html(runs)
     (out / "index.html").write_text(html)
     print(f"  \u2192 {out / 'index.html'}")
 
+    # Keep .nojekyll for GitHub Pages
+    (out / ".nojekyll").touch()
+
     print("Done.")
 
 
 if __name__ == "__main__":
+    import sys
     db = sys.argv[1] if len(sys.argv) > 1 else "results.db"
     out = sys.argv[2] if len(sys.argv) > 2 else "docs"
     generate(db, out)

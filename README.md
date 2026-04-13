@@ -2,21 +2,7 @@
 
 Lightweight evaluation harness for comparing local LLMs via Ollama.
 
-**[Live Dashboard](https://rama-kata.github.io/ml-eval-harness/)** — interactive charts, per-item breakdowns, and judge verdicts.
-
-## Latest Results
-
-<p align="center">
-  <img src="docs/radar.svg" alt="Model Profile Radar" width="480">
-</p>
-
-<p align="center">
-  <img src="docs/comparison.svg" alt="Accuracy Comparison" width="780">
-</p>
-
-<p align="center">
-  <img src="docs/latency.svg" alt="Latency Comparison" width="780">
-</p>
+**[Live Dashboard](https://rama-kata.github.io/ml-eval-harness/)** — interactive ECharts dashboard with heatmaps, latency analysis, accuracy scatter plots, and per-item drill-down.
 
 ## Setup
 
