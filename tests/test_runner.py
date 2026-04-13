@@ -1,4 +1,4 @@
-from eval_harness.runner import score_response
+from eval_harness.metrics import score_response
 
 
 def test_exact_match():
@@ -22,3 +22,9 @@ def test_no_match():
     result = score_response("London", "Paris")
     assert result["exact_match"] is False
     assert result["contains"] is False
+
+
+def test_token_f1_included():
+    result = score_response("Paris", "Paris")
+    assert "token_f1" in result
+    assert result["token_f1"] == 1.0
