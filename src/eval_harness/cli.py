@@ -101,3 +101,12 @@ def details(run_id: int, db: str):
         click.echo(f"  exact={d['exact_match']} contains={d['contains']} f1={d['token_f1']:.2f}")
         if "judge_verdict" in d:
             click.echo(f"  Judge: {d['judge_verdict']} — {d['judge_reason']}")
+
+
+@main.command()
+@click.option("--db", default="results.db", help="SQLite results file")
+@click.option("--output-dir", "-o", default="docs", help="Output directory for charts and HTML")
+def visualize(db: str, output_dir: str):
+    """Generate SVG charts and HTML dashboard from results."""
+    from eval_harness.visualize import generate
+    generate(db, output_dir)
