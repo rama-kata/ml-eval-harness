@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="820" height="320" viewBox="0 0 820 320">
+<rect width="820" height="320" rx="8" fill="#0d1117"/>
+<text x="410.0" y="30" text-anchor="middle" fill="#e6edf3" font-size="15" font-weight="600" font-family="sans-serif">Latency Comparison (avg + p95)</text>
+<line x1="80" y1="250.0" x2="790" y2="250.0" stroke="#30363d" stroke-width="1"/>
+<text x="72" y="254.0" text-anchor="end" fill="#8b949e" font-size="11" font-family="sans-serif">0ms</text>
+<line x1="80" y1="201.25" x2="790" y2="201.25" stroke="#30363d" stroke-width="1"/>
+<text x="72" y="205.25" text-anchor="end" fill="#8b949e" font-size="11" font-family="sans-serif">805ms</text>
+<line x1="80" y1="152.5" x2="790" y2="152.5" stroke="#30363d" stroke-width="1"/>
+<text x="72" y="156.5" text-anchor="end" fill="#8b949e" font-size="11" font-family="sans-serif">1610ms</text>
+<line x1="80" y1="103.75" x2="790" y2="103.75" stroke="#30363d" stroke-width="1"/>
+<text x="72" y="107.75" text-anchor="end" fill="#8b949e" font-size="11" font-family="sans-serif">2415ms</text>
+<line x1="80" y1="55.0" x2="790" y2="55.0" stroke="#30363d" stroke-width="1"/>
+<text x="72" y="59.0" text-anchor="end" fill="#8b949e" font-size="11" font-family="sans-serif">3220ms</text>
+<rect x="119.44444444444444" y="230.8027950310559" width="56.34920634920635" height="19.197204968944103" rx="3" fill="#58a6ff" opacity="0.85"/>
+<line x1="147.61904761904762" y1="153.9534161490683" x2="147.61904761904762" y2="230.8027950310559" stroke="#58a6ff" stroke-width="2" opacity="0.5"/>
+<line x1="139.61904761904762" y1="153.9534161490683" x2="155.61904761904762" y2="153.9534161490683" stroke="#58a6ff" stroke-width="2" opacity="0.5"/>
+<text x="147.61904761904762" y="224.8027950310559" text-anchor="middle" fill="#e6edf3" font-size="11" font-weight="600" font-family="sans-serif">317ms</text>
+<text x="147.61904761904762" y="266" text-anchor="end" fill="#8b949e" font-size="11" font-family="sans-serif" transform="rotate(-30 147.61904761904762 266)">qwen2.5:3b</text>
+<rect x="215.23809523809524" y="232.2562111801242" width="56.34920634920635" height="17.74378881987578" rx="3" fill="#3fb950" opacity="0.85"/>
+<line x1="243.4126984126984" y1="173.02950310559004" x2="243.4126984126984" y2="232.2562111801242" stroke="#3fb950" stroke-width="2" opacity="0.5"/>
+<line x1="235.4126984126984" y1="173.02950310559004" x2="251.4126984126984" y2="173.02950310559004" stroke="#3fb950" stroke-width="2" opacity="0.5"/>
+<text x="243.4126984126984" y="226.2562111801242" text-anchor="middle" fill="#e6edf3" font-size="11" font-weight="600" font-family="sans-serif">293ms</text>
+<text x="243.4126984126984" y="266" text-anchor="end" fill="#8b949e" font-size="11" font-family="sans-serif" transform="rotate(-30 243.4126984126984 266)">qwen2.5:0.5b</text>
+<rect x="311.031746031746" y="164.24844720496893" width="56.34920634920635" height="85.75155279503107" rx="3" fill="#d29922" opacity="0.85"/>
+<line x1="339.2063492063492" y1="122.82608695652172" x2="339.2063492063492" y2="164.24844720496893" stroke="#d29922" stroke-width="2" opacity="0.5"/>
+<line x1="331.2063492063492" y1="122.82608695652172" x2="347.2063492063492" y2="122.82608695652172" stroke="#d29922" stroke-width="2" opacity="0.5"/>
+<text x="339.2063492063492" y="158.24844720496893" text-anchor="middle" fill="#e6edf3" font-size="11" font-weight="600" font-family="sans-serif">1416ms</text>
+<text x="339.2063492063492" y="266" text-anchor="end" fill="#8b949e" font-size="11" font-family="sans-serif" transform="rotate(-30 339.2063492063492 266)">gemma2:2b-instruct-q5_K_M</text>
+<rect x="406.8253968253968" y="222.80900621118013" width="56.34920634920635" height="27.190993788819878" rx="3" fill="#f85149" opacity="0.85"/>
+<line x1="435.0" y1="196.1024844720497" x2="435.0" y2="222.80900621118013" stroke="#f85149" stroke-width="2" opacity="0.5"/>
+<line x1="427.0" y1="196.1024844720497" x2="443.0" y2="196.1024844720497" stroke="#f85149" stroke-width="2" opacity="0.5"/>
+<text x="435.0" y="216.80900621118013" text-anchor="middle" fill="#e6edf3" font-size="11" font-weight="600" font-family="sans-serif">449ms</text>
+<text x="435.0" y="266" text-anchor="end" fill="#8b949e" font-size="11" font-family="sans-serif" transform="rotate(-30 435.0 266)">phi4-mini:latest</text>
+<rect x="502.6190476190476" y="153.16614906832297" width="56.34920634920635" height="96.83385093167703" rx="3" fill="#bc8cff" opacity="0.85"/>
+<line x1="530.7936507936507" y1="104.65838509316768" x2="530.7936507936507" y2="153.16614906832297" stroke="#bc8cff" stroke-width="2" opacity="0.5"/>
+<line x1="522.7936507936507" y1="104.65838509316768" x2="538.7936507936507" y2="104.65838509316768" stroke="#bc8cff" stroke-width="2" opacity="0.5"/>
+<text x="530.7936507936507" y="147.16614906832297" text-anchor="middle" fill="#e6edf3" font-size="11" font-weight="600" font-family="sans-serif">1599ms</text>
+<text x="530.7936507936507" y="266" text-anchor="end" fill="#8b949e" font-size="11" font-family="sans-serif" transform="rotate(-30 530.7936507936507 266)">cogito:latest</text>
+<rect x="598.4126984126983" y="243.3385093167702" width="56.34920634920635" height="6.661490683229814" rx="3" fill="#39d2c0" opacity="0.85"/>
+<line x1="626.5873015873015" y1="236.67701863354037" x2="626.5873015873015" y2="243.3385093167702" stroke="#39d2c0" stroke-width="2" opacity="0.5"/>
+<line x1="618.5873015873015" y1="236.67701863354037" x2="634.5873015873015" y2="236.67701863354037" stroke="#39d2c0" stroke-width="2" opacity="0.5"/>
+<text x="626.5873015873015" y="237.3385093167702" text-anchor="middle" fill="#e6edf3" font-size="11" font-weight="600" font-family="sans-serif">110ms</text>
+<text x="626.5873015873015" y="266" text-anchor="end" fill="#8b949e" font-size="11" font-family="sans-serif" transform="rotate(-30 626.5873015873015 266)">qwen2.5:7b</text>
+<rect x="694.2063492063492" y="157.9503105590062" width="56.34920634920635" height="92.0496894409938" rx="3" fill="#f778ba" opacity="0.85"/>
+<line x1="722.3809523809523" y1="80.43478260869563" x2="722.3809523809523" y2="157.9503105590062" stroke="#f778ba" stroke-width="2" opacity="0.5"/>
+<line x1="714.3809523809523" y1="80.43478260869563" x2="730.3809523809523" y2="80.43478260869563" stroke="#f778ba" stroke-width="2" opacity="0.5"/>
+<text x="722.3809523809523" y="151.9503105590062" text-anchor="middle" fill="#e6edf3" font-size="11" font-weight="600" font-family="sans-serif">1520ms</text>
+<text x="722.3809523809523" y="266" text-anchor="end" fill="#8b949e" font-size="11" font-family="sans-serif" transform="rotate(-30 722.3809523809523 266)">qwen3:0.6b</text>
+</svg>
