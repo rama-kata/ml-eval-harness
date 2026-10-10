@@ -1,6 +1,11 @@
 from eval_harness.metrics import (
-    f1_score, tokens_per_second, normalize_text,
-    normalized_exact_match, normalized_contains, token_f1, score_response,
+    f1_score,
+    normalize_text,
+    normalized_contains,
+    normalized_exact_match,
+    score_response,
+    token_f1,
+    tokens_per_second,
 )
 
 

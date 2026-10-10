@@ -2,7 +2,7 @@
 
 import json
 import sqlite3
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 
 class ResultsDB:
@@ -54,7 +54,43 @@ class ResultsDB:
                 results.get("judge_correct_rate"),
                 results.get("judge_partial_rate"),
                 json.dumps(results),
-                datetime.now(timezone.utc).isoformat(),
+                datetime.now(UTC).isoformat(),
+            ),
+        )
+        self.conn.commit()
+
+    def save_external_run(
+        self,
+        model: str,
+        dataset: str,
+        accuracy: float,
+        latencies_ms: list[float],
+        details: list[dict] | None = None,
+        extra: dict | None = None,
+    ):
+        """Record a run scored outside this harness (an agent eval, a classifier, ...).
+
+        Only accuracy and latency are required; the text-matching metrics stay NULL so they
+        aren't mistaken for real scores. `extra` holds any other metrics.
+        """
+        ordered = sorted(latencies_ms)
+        raw = {"source": "external", "accuracy": accuracy, "details": details or [],
+               "extra": extra or {}}
+        self.conn.execute(
+            """INSERT INTO runs
+               (model, dataset, accuracy, avg_latency_ms, p95_latency_ms, total_latency_s,
+                total_items, raw_results, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                model,
+                dataset,
+                accuracy,
+                sum(ordered) / len(ordered) if ordered else None,
+                ordered[int(len(ordered) * 0.95)] if ordered else None,
+                sum(ordered) / 1000,
+                len(details) if details else len(ordered),
+                json.dumps(raw),
+                datetime.now(UTC).isoformat(),
             ),
         )
         self.conn.commit()

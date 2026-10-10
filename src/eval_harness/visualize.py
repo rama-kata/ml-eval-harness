@@ -7,7 +7,6 @@ import sqlite3
 from pathlib import Path
 from textwrap import dedent
 
-
 # -- Dark theme tokens (GitHub-style) --
 BG = "#0d1117"
 BG_CARD = "#161b22"
@@ -672,11 +671,11 @@ def _svg_heatmap(runs: list[dict], width: int = 820, height: int = 0) -> str:
         return f"rgb({r},{g},{b})"
 
     parts = [
-        f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" '
-        f'viewBox="0 0 {width} {height}">',
+        (f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" '
+        f'viewBox="0 0 {width} {height}">'),
         f'<rect width="{width}" height="{height}" rx="8" fill="{BG}"/>',
-        f'<text x="{width / 2}" y="28" text-anchor="middle" fill="{TEXT}" '
-        f'font-size="15" font-weight="600" font-family="sans-serif">Metric Heatmap</text>',
+        (f'<text x="{width / 2}" y="28" text-anchor="middle" fill="{TEXT}" '
+        f'font-size="15" font-weight="600" font-family="sans-serif">Metric Heatmap</text>'),
     ]
 
     # Column headers
@@ -730,12 +729,12 @@ def _svg_latency(runs: list[dict], width: int = 820, height: int = 320) -> str:
     gap = (chart_w - total_bars_w) / (len(runs) + 1)
 
     parts = [
-        f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" '
-        f'viewBox="0 0 {width} {height}">',
+        (f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" '
+        f'viewBox="0 0 {width} {height}">'),
         f'<rect width="{width}" height="{height}" rx="8" fill="{BG}"/>',
-        f'<text x="{width / 2}" y="30" text-anchor="middle" fill="{TEXT}" '
+        (f'<text x="{width / 2}" y="30" text-anchor="middle" fill="{TEXT}" '
         f'font-size="15" font-weight="600" font-family="sans-serif">'
-        f'Latency Comparison (avg + p95)</text>',
+        f'Latency Comparison (avg + p95)</text>'),
     ]
 
     # Y gridlines
