@@ -71,12 +71,38 @@ def compare(db: str):
         return
 
     for run in runs:
+        if run["contains_rate"] is None:  # imported run: only accuracy and latency
+            scores = f"accuracy={run['accuracy']:.1%}"
+        else:
+            scores = (f"exact={run['accuracy']:.1%} contains={run['contains_rate']:.1%} "
+                      f"f1={run['avg_token_f1']:.3f}")
         line = (f"{run['model']:>30s} | {run['dataset']:>20s} | "
-                f"exact={run['accuracy']:.1%} contains={run['contains_rate']:.1%} "
-                f"f1={run['avg_token_f1']:.3f} | {run['avg_latency_ms']:.0f}ms")
+                f"{scores} | {run['avg_latency_ms']:.0f}ms")
         if run.get('judge_correct_rate') is not None:
             line += f" | judge={run['judge_correct_rate']:.1%}"
         click.echo(line)
+
+
+@main.command("import")
+@click.argument("results_file", type=click.Path(exists=True))
+@click.option("--db", default="results.db", help="SQLite results file")
+def import_run(results_file: str, db: str):
+    """Import a run scored elsewhere, from a JSON file.
+
+    Required keys: model, dataset, accuracy, latencies_ms. Optional: details, extra.
+    """
+    with open(results_file) as f:
+        data = json.load(f)
+    missing = {"model", "dataset", "accuracy", "latencies_ms"} - data.keys()
+    if missing:
+        raise click.UsageError(f"{results_file} is missing keys: {sorted(missing)}")
+    ResultsDB(db).save_external_run(
+        model=data["model"], dataset=data["dataset"], accuracy=data["accuracy"],
+        latencies_ms=data["latencies_ms"], details=data.get("details"),
+        extra=data.get("extra"),
+    )
+    click.echo(f"Imported {data['model']} on {data['dataset']} "
+               f"(accuracy {data['accuracy']:.1%}) into {db}")
 
 
 @main.command()
