@@ -2,7 +2,7 @@
 
 import json
 import sqlite3
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 
 class ResultsDB:
@@ -54,7 +54,7 @@ class ResultsDB:
                 results.get("judge_correct_rate"),
                 results.get("judge_partial_rate"),
                 json.dumps(results),
-                datetime.now(timezone.utc).isoformat(),
+                datetime.now(UTC).isoformat(),
             ),
         )
         self.conn.commit()

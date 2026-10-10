@@ -49,7 +49,7 @@ def evaluate(
     click.echo(f"\nResults saved to {output}")
 
     # Print summary
-    click.echo(f"\n--- Summary ---")
+    click.echo("\n--- Summary ---")
     click.echo(f"Exact match:  {results['accuracy']:.1%}")
     click.echo(f"Contains:     {results['contains_rate']:.1%}")
     click.echo(f"Avg token F1: {results['avg_token_f1']:.3f}")
